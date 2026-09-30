@@ -1,6 +1,6 @@
 # Plano de implementação — Fase 1
 
-**Estado:** validação, geração e despacho controlado das tools concluídos; documentação final pendente.
+**Estado:** concluída.
 
 ## Objetivo
 
@@ -44,9 +44,9 @@ Criar um transpilador que valide uma especificação JSON restrita para o agente
 
 ### 5. Revisar e documentar
 
-- [ ] Executar testes, formatação, Ruff e Mypy.
-- [ ] Documentar escopo, componentes, fluxo, fronteiras de confiança e referências consultadas.
-- [ ] Registrar no README o uso consciente de IA, as referências e a estratégia de orquestração/testes.
+- [x] Executar testes, formatação, Ruff e Mypy.
+- [x] Documentar escopo, componentes, fluxo, fronteiras de confiança e referências consultadas.
+- [x] Registrar no README o uso consciente de IA, as referências e a estratégia de orquestração/testes.
 
 ## Fora do escopo
 
@@ -54,3 +54,16 @@ Criar um transpilador que valide uma especificação JSON restrita para o agente
 - Implementação do MCP de OCR, catálogo/RAG ou API de agendamento.
 - Recepção, armazenamento ou processamento de imagens.
 - Anonimização de PII, fluxo completo de atendimento, fingerprint ou cache.
+
+## Evidências e sequência de commits
+
+A validação registrada para a Fase 1 concluiu 21 testes, Ruff, formatação e Mypy. O teste ADK instancia um `Agent` real e usa `InMemoryRunner` com modelo determinístico para exercitar as tools, sem chamadas a Gemini ou serviços externos.
+
+O histórico da Fase 1 segue esta sequência:
+
+1. `docs: define phase 1 implementation plan` — plano inicial com as tarefas em aberto.
+2. `feat: validate specs and generate ADK agents` — configuração, testes de validação e geração; checkboxes correspondentes atualizados.
+3. `test: verify ADK tool dispatch with InMemoryRunner` — teste de execução controlada; checkboxes de execução atualizados.
+4. `docs: document phase 1 scope and design` — documentação final e conclusão dos checkboxes.
+
+Os documentos de apoio são [`PRD.md`](PRD.md), [`phase1-spec.md`](phase1-spec.md) e [`system-design.md`](system-design.md). Os testes estão em `tests/test_cli.py`, `tests/test_generate.py` e `tests/integration/test_agent_execution.py`.
