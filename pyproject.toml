@@ -1,0 +1,38 @@
+[project]
+name = "carrefour-challenge"
+version = "0.1.0"
+description = "Transpilador de especificacoes de agentes para Google ADK"
+requires-python = ">=3.11"
+dependencies = [
+    "google-adk>=2.9.2,<3",
+    "pydantic>=2,<3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["carrefour_transpiler", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "C4", "C90", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.mypy]
+python_version = "3.11"
+files = ["carrefour_transpiler"]
+strict = true
+warn_unused_configs = true
+show_error_codes = true
+
+[dependency-groups]
+dev = [
+    "mypy==2.3.1",
+    "pytest==8.3.5",
+    "ruff==0.16.9",
+]

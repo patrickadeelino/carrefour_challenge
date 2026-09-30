@@ -1,6 +1,6 @@
 # Plano de implementação — Fase 1
 
-**Estado:** plano inicial. O escopo e as decisões abaixo foram definidos antes da implementação. Os itens serão marcados à medida que cada entrega for concluída.
+**Estado:** validação e geração concluídas; teste de execução do agente e documentação final pendentes.
 
 ## Objetivo
 
@@ -20,22 +20,22 @@ Criar um transpilador que valide uma especificação JSON restrita para o agente
 
 ### 1. Preparar o projeto e os testes
 
-- [ ] Configurar Python 3.11 ou superior e dependências com `uv`.
-- [ ] Criar testes para o contrato do JSON, validação do CLI e geração antes da implementação.
-- [ ] Configurar pytest, Ruff e Mypy.
+- [x] Configurar Python 3.11 ou superior e dependências com `uv`.
+- [x] Criar testes para o contrato do JSON, validação do CLI e geração antes da implementação.
+- [x] Configurar pytest, Ruff e Mypy.
 
 ### 2. Validar a especificação pelo CLI
 
-- [ ] Definir modelos estritos para nome, tipo, modelo e IDs de tools.
-- [ ] Rejeitar campos desconhecidos, valores fora da allowlist, IDs desconhecidos ou repetidos e tools obrigatórias ausentes.
-- [ ] Expor `validate` com mensagens de erro acionáveis; entrada inválida não deve gerar código.
+- [x] Definir modelos estritos para nome, tipo, modelo e IDs de tools.
+- [x] Rejeitar campos desconhecidos, valores fora da allowlist, IDs desconhecidos ou repetidos e tools obrigatórias ausentes.
+- [x] Expor `validate` com mensagens de erro acionáveis; entrada inválida não deve gerar código.
 
 ### 3. Gerar o agente de forma determinística
 
-- [ ] Implementar geração Python baseada em template local.
-- [ ] Expor `generate` e produzir uma factory `create_agent(registered_tools)`.
-- [ ] Validar IDs ausentes e extras antes de instanciar o agente ADK.
-- [ ] Verificar sintaxe e determinismo da saída para especificações equivalentes.
+- [x] Implementar geração Python baseada em template local.
+- [x] Expor `generate` e produzir uma factory `create_agent(registered_tools)`.
+- [x] Validar IDs ausentes e extras antes de instanciar o agente ADK.
+- [x] Verificar sintaxe e determinismo da saída para especificações equivalentes.
 
 ### 4. Verificar integração com Google ADK
 
