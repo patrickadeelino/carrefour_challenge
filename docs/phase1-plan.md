@@ -1,6 +1,6 @@
 # Plano de implementação — Fase 1
 
-**Estado:** validação e geração concluídas; teste de execução do agente e documentação final pendentes.
+**Estado:** validação, geração e despacho controlado das tools concluídos; documentação final pendente.
 
 ## Objetivo
 
@@ -39,8 +39,8 @@ Criar um transpilador que valide uma especificação JSON restrita para o agente
 
 ### 4. Verificar integração com Google ADK
 
-- [ ] Carregar o Python gerado e instanciar um `Agent` real sem chamar um modelo externo.
-- [ ] Usar `InMemoryRunner` e modelo determinístico de teste para verificar despacho das tools.
+- [x] Carregar o Python gerado e instanciar um `Agent` real sem chamar um modelo externo.
+- [x] Usar `InMemoryRunner` e modelo determinístico de teste para verificar despacho das tools.
 
 ### 5. Revisar e documentar
 
