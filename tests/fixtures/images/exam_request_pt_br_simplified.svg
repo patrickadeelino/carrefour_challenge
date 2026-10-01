@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754">
+  <rect width="1240" height="1754" fill="#f2f5f7"/>
+  <rect x="64" y="54" width="1112" height="1646" rx="16" fill="#ffffff" stroke="#d8e0e6" stroke-width="3"/>
+  <rect x="64" y="54" width="1112" height="182" rx="16" fill="#164e63"/>
+  <rect x="64" y="219" width="1112" height="17" fill="#164e63"/>
+  <circle cx="137" cy="143" r="38" fill="#d8edf1"/>
+  <path d="M137 119v48M113 143h48" stroke="#164e63" stroke-width="9" stroke-linecap="round"/>
+  <text x="200" y="126" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif" font-size="30" font-weight="700">CENTRO DE SAÚDE EXEMPLO</text>
+  <text x="200" y="166" fill="#d8edf1" font-family="DejaVu Sans, Arial, sans-serif" font-size="19">Solicitação laboratorial • modelo de demonstração</text>
+  <text x="1112" y="127" text-anchor="end" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700">AMOSTRA SINTÉTICA</text>
+  <text x="1112" y="157" text-anchor="end" fill="#d8edf1" font-family="DejaVu Sans, Arial, sans-serif" font-size="14">DADOS FICTÍCIOS</text>
+
+  <text x="116" y="301" fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="31" font-weight="700">PEDIDO DE EXAMES</text>
+  <text x="116" y="338" fill="#596d7b" font-family="DejaVu Sans, Arial, sans-serif" font-size="18">Marque com X os exames solicitados.</text>
+  <line x1="116" y1="365" x2="1124" y2="365" stroke="#dce4e9" stroke-width="2"/>
+
+  <text x="116" y="411" fill="#596d7b" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="700">PACIENTE</text>
+  <text x="116" y="443" fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="20" font-weight="600">PACIENTE TESTE 001</text>
+  <text x="656" y="411" fill="#596d7b" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="700">IDENTIFICADOR FICTÍCIO</text>
+  <text x="656" y="443" fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="20">TESTE-0001</text>
+
+  <rect x="116" y="481" width="1008" height="52" rx="8" fill="#eaf2f5"/>
+  <text x="138" y="514" fill="#164e63" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="700">EXAMES</text>
+  <text x="638" y="514" fill="#164e63" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="700">EXAMES</text>
+
+  <g fill="#ffffff" stroke="#d7e0e6" stroke-width="2">
+    <rect x="116" y="549" width="492" height="94" rx="9"/><rect x="632" y="549" width="492" height="94" rx="9"/>
+    <rect x="116" y="659" width="492" height="94" rx="9"/><rect x="632" y="659" width="492" height="94" rx="9"/>
+    <rect x="116" y="769" width="492" height="94" rx="9"/><rect x="632" y="769" width="492" height="94" rx="9"/>
+    <rect x="116" y="879" width="492" height="94" rx="9"/><rect x="632" y="879" width="492" height="94" rx="9"/>
+    <rect x="116" y="989" width="492" height="94" rx="9"/><rect x="632" y="989" width="492" height="94" rx="9"/>
+  </g>
+
+  <g fill="none" stroke="#164e63" stroke-width="3" stroke-linecap="round">
+    <rect x="137" y="578" width="34" height="34" rx="3"/><rect x="653" y="578" width="34" height="34" rx="3"/>
+    <rect x="137" y="688" width="34" height="34" rx="3"/><rect x="653" y="688" width="34" height="34" rx="3"/>
+    <rect x="137" y="798" width="34" height="34" rx="3"/><rect x="653" y="798" width="34" height="34" rx="3"/>
+    <rect x="137" y="908" width="34" height="34" rx="3"/><rect x="653" y="908" width="34" height="34" rx="3"/>
+    <rect x="137" y="1018" width="34" height="34" rx="3"/><rect x="653" y="1018" width="34" height="34" rx="3"/>
+    <path d="M143 584l22 22M165 584l-22 22"/>
+    <path d="M143 694l22 22M165 694l-22 22"/>
+    <path d="M143 914l22 22M165 914l-22 22"/>
+    <path d="M659 584l22 22M681 584l-22 22"/>
+    <path d="M659 914l22 22M681 914l-22 22"/>
+    <path d="M659 1024l22 22M681 1024l-22 22"/>
+  </g>
+
+  <g fill="#69808d" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" font-weight="700">
+    <text x="188" y="580">EX-101</text><text x="704" y="580">EX-106</text>
+    <text x="188" y="690">EX-102</text><text x="704" y="690">EX-107</text>
+    <text x="188" y="800">EX-103</text><text x="704" y="800">EX-108</text>
+    <text x="188" y="910">EX-104</text><text x="704" y="910">EX-109</text>
+    <text x="188" y="1020">EX-105</text><text x="704" y="1020">EX-110</text>
+  </g>
+  <g fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="600">
+    <text x="188" y="611">Hemograma completo</text>
+    <text x="704" y="611">TSH</text>
+    <text x="188" y="721">Glicemia de jejum</text>
+    <text x="704" y="721">Anticorpo anti-receptor de TSH</text>
+    <text x="188" y="831">Creatinina</text>
+    <text x="704" y="831">Colesterol HDL</text>
+    <text x="188" y="941">Hemoglobina glicada (HbA1c)</text>
+    <text x="704" y="941">Colesterol LDL</text>
+    <text x="188" y="1051">CPK (Creatina quinase)</text>
+    <text x="704" y="1051">Vitamina D (25-OH)</text>
+  </g>
+
+  <rect x="116" y="1132" width="1008" height="144" rx="10" fill="#f7f9fa" stroke="#dce4e9" stroke-width="2"/>
+  <text x="142" y="1173" fill="#164e63" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700">PROFISSIONAL SOLICITANTE</text>
+  <text x="142" y="1214" fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="19">Dra. Profissional Exemplo</text>
+  <text x="676" y="1214" fill="#183447" font-family="DejaVu Sans, Arial, sans-serif" font-size="19">CRM TESTE 0000</text>
+  <text x="142" y="1250" fill="#596d7b" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">Data: 30/09/2026 • Assinatura fictícia</text>
+
+  <rect x="116" y="1310" width="1008" height="176" rx="10" fill="#fffaf0" stroke="#f0dfb5" stroke-width="2"/>
+  <text x="142" y="1352" fill="#7a5a12" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700">OBSERVAÇÃO DO TESTE</text>
+  <text x="142" y="1393" fill="#594b2d" font-family="DejaVu Sans, Arial, sans-serif" font-size="17">Os códigos EX-101 a EX-110 são identificadores fictícios,</text>
+  <text x="142" y="1424" fill="#594b2d" font-family="DejaVu Sans, Arial, sans-serif" font-size="17">criados apenas para validar a leitura e a associação das marcações.</text>
+  <text x="142" y="1460" fill="#594b2d" font-family="DejaVu Sans, Arial, sans-serif" font-size="17">Documento sem validade clínica.</text>
+  <text x="1124" y="1620" text-anchor="end" fill="#164e63" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700">AMOSTRA FICTÍCIA PARA TESTE DE OCR</text>
+</svg>

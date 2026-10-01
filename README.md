@@ -1,75 +1,93 @@
 # Carrefour Challenge
 
-**Status:** fase 1 concluída no escopo definido no PRD. O teste de integração executa o agente gerado pelo `InMemoryRunner` e comprova o despacho das três tools com um modelo determinístico de teste. Chamadas a um modelo real ficam para uma etapa posterior.
+**Estado:** Fase 1 concluída; Fase 2.0 em andamento.
 
-Este repositório será construído por etapas. A fase 1 define uma especificação JSON para um agente do tipo exam scheduler, valida essa especificação e gera uma factory Python que instancia um agente usando Google ADK.
+O projeto constrói um agente exam scheduler a partir de uma especificação declarativa. A Fase 1 valida o JSON e gera uma factory Python para o Google ADK. A Fase 2 prepara os serviços e integrações do fluxo de atendimento.
 
-## Fluxo da fase 1
+## Fluxo da Fase 1
 
 ~~~text
-specification.json -> validação Pydantic -> factory Python gerada com Google ADK
+specification.json -> validação Pydantic -> geração determinística de uma factory Python
 ~~~
 
-O JSON seleciona ferramentas por identificadores lógicos registrados pelo projeto. O transpilador rejeita ferramentas desconhecidas ou incompatíveis com o tipo de agente. Endereços de servidores, credenciais e instruções fixas do agente ficam fora do JSON.
+A especificação escolhe tools por IDs registrados no projeto. Ela não aceita código, instruções livres, credenciais ou endereços de servidores MCP. A factory gerada recebe implementações aprovadas pelo runtime e valida que o conjunto de IDs corresponde exatamente ao declarado antes de criar o agente.
 
-A saída gerada expõe `create_agent(registered_tools)`. A factory recebe o mapa de implementações aprovadas do consumidor confiável, exige exatamente os IDs declarados e informa IDs ausentes ou extras antes de instanciar o agente ADK. O contrato da factory já está implementado; o serviço de runtime que fornecerá as tools em produção ainda fica para uma etapa posterior. A mesma especificação gera os mesmos bytes de Python. Fingerprint e cache de artefatos foram adiados.
+A geração produz código-fonte; não executa a factory nem inicia o agente. O código gerado define `create_agent(registered_tools)`, que instancia um `Agent` do Google ADK quando for chamado.
 
-## Documentos
+## Estado da Fase 2
 
-- [PRD do projeto (escopo atual: fase 1)](docs/PRD.md): objetivo, escopo e critérios de conclusão.
-- [Plano de implementação da fase 1](docs/phase1-plan.md): sequência acordada e entregas concluídas.
-- [Especificação técnica da fase 1](docs/phase1-spec.md): formato inicial do JSON, validações, ferramentas e geração determinística.
-- [System design da fase 1](docs/system-design.md): componentes, fluxo de produção e fronteiras de confiança desta etapa.
-- [Exemplo de especificação](specification.json): configuração de exemplo ainda sujeita à validação pelo transpilador.
+O componente `TemporaryImageStore`, em `carrefour_transpiler/image_storage.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos.
 
-## Limite desta etapa
+O Docker Compose inicia um runtime não root com um volume `tmpfs` de 64 MiB para esse armazenamento. Por enquanto, a entrada de imagens do host ainda não está ligada ao runtime. Não existe um comando público para enviar uma imagem, e o OCR MCP, o catálogo e a API de agendamento ainda não foram implementados.
 
-Esta fase trata da especificação, sua validação e da geração da factory Python do agente. O OCR, a busca de exames via MCP/SSE, a API FastAPI de agendamento, o fluxo com a imagem e a conteinerização serão detalhados em etapas posteriores. Os servidores MCP de OCR e catálogo são requisitos do desafio; o que esta fase proíbe é aceitar endpoints MCP arbitrários diretamente do JSON.
+## Documentação
 
-## Transparência sobre o uso de IA
+- [PRD da Fase 1](docs/PRD.md): objetivo, escopo e critérios de conclusão.
+- [Plano da Fase 1](docs/phase1-plan.md): etapas acordadas e entregas concluídas.
+- [Especificação técnica da Fase 1](docs/phase1-spec.md): formato do JSON, validações, tools e geração determinística.
+- [System design da Fase 1](docs/system-design.md): componentes, fluxo e fronteiras de confiança.
+- [Plano da Fase 2](docs/phase2-plan.md): decisões e checklist das próximas subfases.
+- [Handoff da Fase 1](docs/HANDOFF_FASE_1.md): decisões e contexto para continuidade.
+- [Exemplo de especificação](specification.json).
 
-A IA apoiou o refinamento dos requisitos, a discussão das decisões de arquitetura, a implementação e a documentação. As decisões de escopo — como aceitar somente IDs de tools registrados, limitar os modelos por allowlist e usar um modelo simulado para testar o despacho de tools sem chamadas externas — foram avaliadas e direcionadas pelo candidato. O código sugerido foi revisado e validado com testes, Ruff e Mypy. O gerador usa um template determinístico local e não usa um LLM para escrever o arquivo Python produzido.
+## Requisitos no host
 
-Na verificação final desta fase, os 21 testes passaram; Ruff, formatação e Mypy também passaram. O teste de integração do `Runner` confirmou a execução das três tools com respostas determinísticas de um modelo de teste. O pytest exibiu avisos de depreciação do OpenTelemetry e de uso experimental de function declarations no ADK, sem falha nos testes. Não chamamos o Gemini nem validamos a qualidade das decisões do modelo.
+- Docker Engine com Docker Compose
+- Git para obter o repositório
 
-## Referências iniciais
+Python, uv e as dependências do projeto são instalados dentro da imagem. Não é necessário instalar esses componentes no host.
 
-- [Google ADK: estrutura de projeto e definição do agente](https://google.github.io/agents-cli/guide/project-structure/)
-- [Google ADK: Runner e InMemoryRunner](https://github.com/google/adk-python/blob/main/docs/guides/runners/runner/index.md)
-- [Google ADK: estratégia de testes unitários, de integração e avaliação](https://github.com/google/adk-python/blob/main/contributing/adk_project_overview_and_architecture.md#testing--evaluation-strategy)
-- [Google ADK: modelos e integração LiteLLM](https://github.com/google/adk-python/blob/main/src/google/adk/models/lite_llm.py)
-- [Google ADK: integração MCP](https://github.com/google/adk-python/blob/main/src/google/adk/tools/mcp_tool/mcp_toolset.py)
-
-## Executar os testes da fase 1
-
-Requer Python 3.11 ou superior e `uv`. Sincronize o ambiente com as dependências de desenvolvimento:
+## Construir e iniciar o container
 
 ~~~sh
-uv sync --group dev
+docker compose up -d --build assistant-runtime
 ~~~
 
-Execute os testes:
+O build instala as dependências de runtime e desenvolvimento a partir do uv.lock. O repositório é montado em `/workspace`, então os comandos abaixo usam os arquivos atuais e deixam a saída gerada visível no host. O container executa como usuário não root. Se o GID do grupo do host não for 1000, configure `CARREFOUR_RUNTIME_GID` no arquivo `.env` do projeto.
+
+Para parar o ambiente:
 
 ~~~sh
-uv run pytest -q
+docker compose down
 ~~~
 
-Executar as verificações estáticas de estilo, complexidade e tipagem:
+Todos os comandos de aplicação abaixo são executados dentro do container em execução. Eles devem ser chamados a partir da raiz do repositório no host.
 
-~~~sh
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-~~~
+## Validar e gerar o agente
 
 Validar o exemplo:
 
 ~~~sh
-uv run python -m carrefour_transpiler validate specification.json
+docker compose exec assistant-runtime python -m carrefour_transpiler validate specification.json
 ~~~
 
 Gerar a factory Python:
 
 ~~~sh
-uv run python -m carrefour_transpiler generate specification.json --output generated/agent.py
+docker compose exec assistant-runtime python -m carrefour_transpiler generate specification.json --output generated/agent.py
 ~~~
+
+O arquivo gerado é código-fonte. A execução e o despacho das tools são exercitados separadamente pelos testes com o `InMemoryRunner` do ADK e um modelo determinístico.
+
+## Testes e análise estática
+
+A imagem inclui pytest, Ruff e Mypy para executar verificações no container. A suíte contém testes unitários da especificação, geração e armazenamento, além de um teste de execução controlada do agente com o `InMemoryRunner`. Nenhum teste inicia uma chamada a um modelo Gemini real.
+
+~~~sh
+docker compose exec assistant-runtime pytest -q
+docker compose exec assistant-runtime ruff check .
+docker compose exec assistant-runtime ruff format --check .
+docker compose exec assistant-runtime mypy
+~~~
+
+## Referências do Google ADK
+
+- [Runner e InMemoryRunner](https://github.com/google/adk-python/blob/main/docs/guides/runners/runner/index.md)
+- [Estratégia de testes do ADK](https://github.com/google/adk-python/blob/main/contributing/adk_project_overview_and_architecture.md#testing--evaluation-strategy)
+- [Integração de ferramentas MCP](https://github.com/google/adk-python/blob/main/src/google/adk/tools/mcp_tool/mcp_toolset.py)
+
+## Transparência sobre o uso de IA
+
+A IA apoiou a discussão de requisitos, decisões de arquitetura, implementação e documentação. O candidato direcionou as decisões de escopo e revisou as alterações. A geração do agente usa um template local determinístico; um LLM não escreve o arquivo Python gerado.
+
+Os testes do agente usam um modelo determinístico de teste para exercitar o despacho das tools sem credenciais nem chamadas a serviços externos. Não foram feitas chamadas a Gemini real nos testes.

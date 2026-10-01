@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1754" viewBox="0 0 1240 1754">
+  <rect width="1240" height="1754" fill="#f4f6f8"/>
+  <rect x="64" y="58" width="1112" height="1638" rx="18" fill="#ffffff" stroke="#d7dee6" stroke-width="3"/>
+  <rect x="64" y="58" width="1112" height="190" rx="18" fill="#0f5263"/>
+  <rect x="64" y="225" width="1112" height="23" fill="#0f5263"/>
+  <circle cx="142" cy="145" r="42" fill="#d8edf1"/>
+  <path d="M142 113v64M110 145h64" stroke="#0f5263" stroke-width="12" stroke-linecap="round"/>
+  <text x="212" y="126" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif" font-size="31" font-weight="700" letter-spacing="1">CLÍNICA EXEMPLO</text>
+  <text x="212" y="169" fill="#d8edf1" font-family="DejaVu Sans, Arial, sans-serif" font-size="21">Laboratório e Medicina Diagnóstica</text>
+  <text x="1115" y="132" text-anchor="end" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="700">DOCUMENTO FICTÍCIO</text>
+  <text x="1115" y="164" text-anchor="end" fill="#d8edf1" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">USO EXCLUSIVO EM TESTE</text>
+
+  <text x="118" y="314" fill="#173042" font-family="DejaVu Sans, Arial, sans-serif" font-size="34" font-weight="700">SOLICITAÇÃO DE EXAMES</text>
+  <text x="118" y="351" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="20">Pedido laboratorial • Guia de atendimento</text>
+  <line x1="118" y1="382" x2="1122" y2="382" stroke="#d9e1e8" stroke-width="2"/>
+
+  <text x="118" y="431" fill="#0f5263" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="1">DADOS DO PACIENTE</text>
+  <text x="118" y="478" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">NOME COMPLETO</text>
+  <text x="118" y="515" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="25" font-weight="600">MARIA TESTE DA SILVA</text>
+  <text x="710" y="478" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">DATA DE NASCIMENTO</text>
+  <text x="710" y="515" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="23">10/10/1980</text>
+  <line x1="118" y1="540" x2="1122" y2="540" stroke="#e5eaee" stroke-width="2"/>
+  <text x="118" y="581" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">CPF</text>
+  <text x="118" y="618" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="23">000.000.000-00</text>
+  <text x="710" y="581" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">TELEFONE</text>
+  <text x="710" y="618" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="23">(00) 00000-0000</text>
+
+  <rect x="118" y="666" width="1004" height="147" rx="12" fill="#f4f8fa" stroke="#e1e9ed" stroke-width="2"/>
+  <text x="145" y="706" fill="#0f5263" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">PROFISSIONAL SOLICITANTE</text>
+  <text x="145" y="752" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="22">Dra. Camila Exemplo</text>
+  <text x="710" y="752" fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="22">CRM-SP 000000</text>
+  <text x="145" y="786" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="16">Data da solicitação: 30/09/2026</text>
+
+  <text x="118" y="872" fill="#0f5263" font-family="DejaVu Sans, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="1">EXAMES SOLICITADOS</text>
+  <text x="118" y="908" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="17">Realizar os exames abaixo:</text>
+
+  <g fill="#ffffff" stroke="#d8e2e8" stroke-width="2">
+    <rect x="118" y="937" width="1004" height="86" rx="10"/>
+    <rect x="118" y="1035" width="1004" height="86" rx="10"/>
+    <rect x="118" y="1133" width="1004" height="86" rx="10"/>
+    <rect x="118" y="1231" width="1004" height="86" rx="10"/>
+    <rect x="118" y="1329" width="1004" height="86" rx="10"/>
+  </g>
+  <g fill="#0f5263">
+    <circle cx="158" cy="980" r="16"/><circle cx="158" cy="1078" r="16"/><circle cx="158" cy="1176" r="16"/><circle cx="158" cy="1274" r="16"/><circle cx="158" cy="1372" r="16"/>
+  </g>
+  <g fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700" text-anchor="middle">
+    <text x="158" y="986">1</text><text x="158" y="1084">2</text><text x="158" y="1182">3</text><text x="158" y="1280">4</text><text x="158" y="1378">5</text>
+  </g>
+  <g fill="#172b3a" font-family="DejaVu Sans, Arial, sans-serif" font-size="24" font-weight="600">
+    <text x="202" y="989">Hemograma completo</text>
+    <text x="202" y="1087">Glicemia de jejum</text>
+    <text x="202" y="1185">Hemoglobina glicada (HbA1c)</text>
+    <text x="202" y="1283">Colesterol total e frações</text>
+    <text x="202" y="1381">TSH (hormônio tireoestimulante)</text>
+  </g>
+
+  <rect x="118" y="1460" width="1004" height="102" rx="10" fill="#fffaf0" stroke="#f0dfb5" stroke-width="2"/>
+  <text x="145" y="1501" fill="#7a5a12" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="700">OBSERVAÇÃO</text>
+  <text x="145" y="1535" fill="#594b2d" font-family="DejaVu Sans, Arial, sans-serif" font-size="18">Documento de demonstração. Não utilizar para atendimento ou diagnóstico.</text>
+
+  <line x1="118" y1="1603" x2="542" y2="1603" stroke="#9aaab5" stroke-width="2"/>
+  <text x="118" y="1631" fill="#536777" font-family="DejaVu Sans, Arial, sans-serif" font-size="15">Assinatura e carimbo do profissional</text>
+  <text x="1122" y="1631" text-anchor="end" fill="#0f5263" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="700">AMOSTRA FICTÍCIA PARA TESTE DE OCR</text>
+</svg>

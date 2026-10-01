@@ -1,0 +1,52 @@
+# Dá um nome estável ao projeto Compose e prefixa os recursos criados por ele.
+name: carrefour-challenge
+
+# Declara os containers que compõem esta etapa do projeto.
+services:
+  # Runtime da aplicação; o serviço fica ligado para receber comandos via exec.
+  assistant-runtime:
+    # Constrói a imagem usando o Dockerfile no diretório atual.
+    build: .
+    # Compartilha o grupo do host para permitir escrita nos arquivos do projeto montado.
+    group_add:
+      - "${CARREFOUR_RUNTIME_GID:-1000}"
+    # Executa comandos a partir da raiz do projeto montado no container.
+    working_dir: /workspace
+    # Usa um processo init para encaminhar sinais e recolher processos filhos.
+    init: true
+    # Mantém o container em execução enquanto o fluxo de atendimento é desenvolvido.
+    command: ["sleep", "infinity"]
+    # Configurações de ambiente disponíveis dentro do processo do runtime.
+    environment:
+      # Caminho do armazenamento temporário de imagens no runtime.
+      CARREFOUR_IMAGE_STORAGE_PATH: /var/run/carrefour/images
+    # Montagens persistentes ou compartilhadas do serviço.
+    volumes:
+      # Dá ao runtime acesso de escrita ao volume temporário compartilhado.
+      - image-storage:/var/run/carrefour/images
+      # Monta o repositório atual para comandos, testes e arquivos gerados.
+      - type: bind
+        # Usa a raiz do projeto em relação a este arquivo Compose.
+        source: .
+        # Caminho de trabalho dentro do container.
+        target: /workspace
+        # Não cria silenciosamente uma pasta vazia se a origem estiver ausente.
+        bind:
+          create_host_path: false
+    # Reinicia o serviço após falha ou reinício do Docker, salvo parada manual.
+    restart: unless-stopped
+
+# Declara os volumes nomeados usados pelos serviços deste projeto.
+volumes:
+  # Área temporária que futuramente também será montada no OCR somente para leitura.
+  image-storage:
+    # Usa o driver local do Docker para montar um filesystem local.
+    driver: local
+    # Passa opções ao driver para criar a área temporária em memória.
+    driver_opts:
+      # Seleciona o tipo tmpfs, em vez de armazenar os arquivos em disco.
+      type: tmpfs
+      # Informa ao driver que o dispositivo de armazenamento é o próprio tmpfs.
+      device: tmpfs
+      # Limita a 64 MiB e ajusta dono/permissões para o usuário app (UID/GID 10001).
+      o: size=64m,uid=10001,gid=10001,mode=0700
