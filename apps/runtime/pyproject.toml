@@ -1,26 +1,29 @@
+[build-system]
+requires = ["uv_build>=0.12.20,<0.13"]
+build-backend = "uv_build"
+
 [project]
-name = "carrefour-challenge"
+name = "carrefour-runtime"
 version = "0.1.0"
-description = "Transpilador de especificacoes de agentes para Google ADK"
+description = "Runtime CLI do Carrefour Challenge"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "google-adk>=2.9.2,<3",
     "google-genai>=2.25.0",
     "pillow>=11,<13",
     "pydantic>=2,<3",
-    "python-dotenv>=1.2.3",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-pythonpath = ["."]
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-src = ["carrefour_transpiler", "tests"]
-extend-exclude = ["generated"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["B", "C4", "C90", "E", "F", "I", "SIM", "UP"]
@@ -30,7 +33,7 @@ max-complexity = 8
 
 [tool.mypy]
 python_version = "3.11"
-files = ["carrefour_transpiler"]
+files = ["src/carrefour_runtime"]
 strict = true
 warn_unused_configs = true
 show_error_codes = true

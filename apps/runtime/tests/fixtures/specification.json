@@ -1,0 +1,15 @@
+{
+  "agent": {
+    "name": "exam_scheduler_demo",
+    "type": "exam_scheduler",
+    "model": {
+      "provider": "gemini",
+      "name": "gemini-3.8-flash"
+    },
+    "tools": [
+      "medical_order_ocr",
+      "exam_catalog_search",
+      "appointment_booking"
+    ]
+  }
+}

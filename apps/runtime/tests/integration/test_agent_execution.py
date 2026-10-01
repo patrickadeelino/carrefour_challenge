@@ -13,7 +13,7 @@ from google.adk.runners import InMemoryRunner
 from google.genai import types
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SPECIFICATION_PATH = PROJECT_ROOT / "specification.json"
+SPECIFICATION_PATH = PROJECT_ROOT / "tests" / "fixtures" / "specification.json"
 
 
 def run_generate(output_path: Path) -> subprocess.CompletedProcess[str]:
@@ -21,7 +21,7 @@ def run_generate(output_path: Path) -> subprocess.CompletedProcess[str]:
         [
             sys.executable,
             "-m",
-            "carrefour_transpiler",
+            "carrefour_runtime",
             "generate",
             str(SPECIFICATION_PATH),
             "--output",

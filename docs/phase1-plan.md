@@ -66,4 +66,4 @@ O histórico da Fase 1 segue esta sequência:
 3. `test: verify ADK tool dispatch with InMemoryRunner` — teste de execução controlada; checkboxes de execução atualizados.
 4. `docs: document phase 1 scope and design` — documentação final e conclusão dos checkboxes.
 
-Os documentos de apoio são [`PRD.md`](PRD.md), [`phase1-spec.md`](phase1-spec.md) e [`system-design.md`](system-design.md). Os testes estão em `tests/test_cli.py`, `tests/test_generate.py` e `tests/integration/test_agent_execution.py`.
+Os documentos de apoio são [`PRD.md`](PRD.md), [`phase1-spec.md`](phase1-spec.md) e [`system-design.md`](system-design.md). Após a refatoração, o código da Fase 1 está em `apps/runtime/src/carrefour_runtime/`, e seus testes estão em `apps/runtime/tests/`.

@@ -8,7 +8,7 @@
 
 - Fase 1 foi concluída no escopo do PRD: CLI valida `specification.json` e gera uma factory Python determinística para Google ADK.
 - Repositório: `/home/patrick/Patrick/carrefour_challenge`, branch `main`. Último commit: `894c1b1` (`docs: document phase 1 scope and design`).
-- `docs/TODO.md`, `docs/HANDOFF_FASE_1.md` e `generated/agent.py` estão locais e fora do Git. O arquivo gerado foi preservado; não foi incluído nos commits.
+- `docs/TODO.md` e `generated/agent.py` permanecem locais e fora do Git. Este handoff foi versionado; o arquivo gerado foi preservado e não foi incluído nos commits.
 
 ## Decisions
 
@@ -28,5 +28,5 @@
 
 - Commits: `60c30ae` (validação e geração), `1fe5c31` (execução de tools com `InMemoryRunner`), `894c1b1` (documentação da fase 1).
 - Documentos: `README.md`, `docs/PRD.md`, `docs/phase1-spec.md`, `docs/system-design.md`.
-- Código: `carrefour_transpiler/`; testes: `tests/test_cli.py`, `tests/test_generate.py`, `tests/integration/test_agent_execution.py`.
+- Código e testes de runtime agora ficam em `apps/runtime/`; os caminhos originais da Fase 1 foram reorganizados no commit de refatoração.
 - Manutenção local: `docs/TODO.md`.

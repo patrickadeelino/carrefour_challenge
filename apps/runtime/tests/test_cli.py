@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-SPECIFICATION_PATH = Path(__file__).resolve().parents[1] / "specification.json"
+RUNTIME_ROOT = Path(__file__).resolve().parents[1]
+SPECIFICATION_PATH = RUNTIME_ROOT / "tests" / "fixtures" / "specification.json"
 
 
 def load_specification():
@@ -29,16 +30,15 @@ def run_validate(tmp_path, contents):
     else:
         spec_path.write_text(json.dumps(contents), encoding="utf-8")
 
-    project_root = Path(__file__).resolve().parents[1]
     return subprocess.run(
         [
             sys.executable,
             "-m",
-            "carrefour_transpiler",
+            "carrefour_runtime",
             "validate",
             str(spec_path),
         ],
-        cwd=project_root,
+        cwd=RUNTIME_ROOT,
         capture_output=True,
         text=True,
         check=False,

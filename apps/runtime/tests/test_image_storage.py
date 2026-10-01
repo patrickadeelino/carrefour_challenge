@@ -5,8 +5,9 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from carrefour_transpiler.image_storage import ImageStorageError, TemporaryImageStore
 from PIL import Image
+
+from carrefour_runtime.image_storage import ImageStorageError, TemporaryImageStore
 
 
 def image_bytes(image_format: str) -> bytes:
@@ -73,7 +74,7 @@ def test_failed_atomic_promotion_does_not_leave_partial_artifacts(
     def fail_replace(source: Path, destination: Path) -> None:
         raise OSError("simulated filesystem failure")
 
-    monkeypatch.setattr("carrefour_transpiler.image_storage.os.replace", fail_replace)
+    monkeypatch.setattr("carrefour_runtime.image_storage.os.replace", fail_replace)
 
     with pytest.raises(ImageStorageError, match="armazenar imagem"):
         store.store(image_bytes("PNG"))

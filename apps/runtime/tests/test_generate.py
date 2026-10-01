@@ -9,7 +9,7 @@ import pytest
 from google.adk.agents import Agent
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SPECIFICATION_PATH = PROJECT_ROOT / "specification.json"
+SPECIFICATION_PATH = PROJECT_ROOT / "tests" / "fixtures" / "specification.json"
 
 
 def run_generate(
@@ -19,7 +19,7 @@ def run_generate(
         [
             sys.executable,
             "-m",
-            "carrefour_transpiler",
+            "carrefour_runtime",
             "generate",
             str(specification_path),
             "--output",

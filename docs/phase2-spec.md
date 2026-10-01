@@ -33,7 +33,7 @@ Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs
 Comando previsto, executado no serviço `assistant-runtime`:
 
 ```text
-docker compose exec assistant-runtime python -m carrefour_transpiler process --path exam_request_pt_br.png
+docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br.png
 ```
 
 - `--path` recebe apenas o nome do arquivo, sem caminho absoluto ou componentes `..`.
@@ -98,6 +98,8 @@ As responsabilidades abaixo cobrem somente a fatia de OCR. A busca no catálogo 
 | Docker Compose | Executar runtime e servidor OCR em containers e compartilhar o volume `tmpfs` com permissões distintas. |
 
 O `TemporaryImageStore` já está implementado. O comando `process`, o servidor MCP e a conexão entre o ADK e o OCR ainda não estão implementados.
+
+O runtime é um app Python independente em `apps/runtime/`, com seu próprio `pyproject.toml`, `uv.lock`, Dockerfile, pacote instalado e testes. O Compose da raiz constrói esse app com `apps/runtime/` como contexto e monta a raiz do repositório em `/workspace` para entradas e artefatos locais. O MCP de OCR será outro app, com build e dependências próprios, em uma subfase posterior; ele não faz parte desta refatoração.
 
 ## 5. Privacidade e segurança
 

@@ -5,8 +5,12 @@ name: carrefour-challenge
 services:
   # Runtime da aplicação; o serviço fica ligado para receber comandos via exec.
   assistant-runtime:
-    # Constrói a imagem usando o Dockerfile no diretório atual.
-    build: .
+    # Constrói a imagem a partir do projeto independente apps/runtime.
+    build:
+      # Limita o contexto de build aos arquivos deste app.
+      context: ./apps/runtime
+      # Usa o Dockerfile localizado dentro do contexto do runtime.
+      dockerfile: Dockerfile
     # Compartilha o grupo do host para permitir escrita nos arquivos do projeto montado.
     group_add:
       - "${CARREFOUR_RUNTIME_GID:-1000}"

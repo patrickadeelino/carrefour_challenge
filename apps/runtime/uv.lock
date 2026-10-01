@@ -135,15 +135,14 @@ wheels = [
 ]
 
 [[package]]
-name = "carrefour-challenge"
+name = "carrefour-runtime"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "google-adk" },
     { name = "google-genai" },
     { name = "pillow" },
     { name = "pydantic" },
-    { name = "python-dotenv" },
 ]
 
 [package.dev-dependencies]
@@ -159,7 +158,6 @@ requires-dist = [
     { name = "google-genai", specifier = ">=2.25.0" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pydantic", specifier = ">=2,<3" },
-    { name = "python-dotenv", specifier = ">=1.2.3" },
 ]
 
 [package.metadata.requires-dev]

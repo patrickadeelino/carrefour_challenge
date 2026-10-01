@@ -15,7 +15,7 @@ from .validation import (
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="carrefour-transpiler")
+    parser = argparse.ArgumentParser(prog="carrefour-runtime")
     commands = parser.add_subparsers(dest="command", required=True)
     validate_command = commands.add_parser(
         "validate", help="valida um arquivo de especificação JSON"

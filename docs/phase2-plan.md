@@ -1,6 +1,6 @@
 # Plano da Fase 2
 
-**Estado:** rascunho inicial de `phase2-spec.md` preparado para revisão. O componente de armazenamento temporário e a base do container de desenvolvimento estão implementados. A implementação do fluxo OCR começa depois de revisar e aprovar a especificação e fechar as decisões técnicas pendentes.
+**Estado:** rascunho inicial de `phase2-spec.md` preparado para revisão. O armazenamento temporário e o runtime independente estão implementados. A implementação do fluxo OCR começa depois de revisar e aprovar a especificação.
 
 **Regra de trabalho:** fechar e revisar a especificação da Fase 2 antes de continuar a implementação. Depois, avançar uma subfase por vez, validando o entregável e documentando as decisões.
 
@@ -25,7 +25,8 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 - [x] Definir a composição do agente gerado nesta fatia: tools controladas de stub para catálogo e agendamento, sem chamadas externas; instruções limitadas ao OCR.
 - [x] Implementar o componente reutilizável `TemporaryImageStore`, com validação, gravação atômica, resolução por UUID, exclusão e limpeza de órfãos; os testes unitários do componente estão presentes.
 - [x] Configurar a base de desenvolvimento em Docker: dependências `dev`, workspace montado em `/workspace`, runtime não root e volume `tmpfs`; `docker compose config` foi validado.
-- [ ] Atualizar o system design e manter rastreabilidade entre requisitos, componentes e testes.
+- [x] Organizar o runtime atual como app Python independente, com build, dependências, testes e documentação próprios; manter os materiais da POC na raiz.
+- [x] Atualizar o system design e manter rastreabilidade entre requisitos, componentes e testes.
 - [ ] Revisar e aprovar a especificação e fechar as pendências técnicas antes de iniciar a próxima implementação.
 
 **Entregável:** `docs/phase2-spec.md` revisada e aprovada, com o escopo e os critérios da primeira fatia de implementação.

@@ -55,6 +55,12 @@ O diagrama mostra a geração: o validador confere a estrutura e as tools declar
 - Erros de leitura, JSON inválido ou falha de validação interrompem o CLI sem gravar saída gerada.
 - Uma divergência entre IDs declarados e registrados interrompe a factory antes de criar o agente.
 
+## Estrutura executável atual — base da Fase 2
+
+O runtime é um app Python independente em `apps/runtime/`, com código em `src/carrefour_runtime/`, dependências e lockfile próprios, Dockerfile, README e testes. Ele contém o CLI de transpiler da Fase 1 e o armazenamento temporário já implementado. A raiz do repositório mantém o Compose, a documentação do desafio, o exemplo de especificação e os materiais sintéticos da POC.
+
+O serviço Compose `assistant-runtime` constrói a imagem usando somente `apps/runtime/` como contexto. Em execução, a raiz do repositório é montada em `/workspace` para ler entradas e gravar artefatos. O MCP de OCR ainda não foi criado; quando for implementado, será outro app Python independente e se comunicará com o runtime pelo contrato MCP acordado.
+
 ## Fora do escopo desta versão
 
 A aplicação de produção, chamadas a um modelo real, implementações MCP, API de agendamento, tratamento da imagem e anonimização de PII serão desenhados quando suas fases forem planejadas.
