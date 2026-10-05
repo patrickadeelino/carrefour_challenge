@@ -31,7 +31,7 @@ técnicas. Inclua duração quando ela ajudar a localizar lentidão.
   responsável.
 - Passe somente atributos operacionais aprovados pelo formatador compartilhado
   em `packages/carrefour_observability/`.
-- Mantenha o resultado JSON do CLI em `stdout` e os logs operacionais em
+- Mantenha a saída funcional do CLI em `stdout` e os logs operacionais em
   `stderr`.
 - Adicione ou ajuste testes para validar os campos, a severidade e a ausência de
   dados sensíveis.

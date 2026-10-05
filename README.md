@@ -1,6 +1,6 @@
 # Carrefour Challenge
 
-**Estado:** Fase 1 concluída; OCR e RAG estão disponíveis como serviços independentes. A API fictícia da subfase 2.3 já foi implementada e aguarda revisão antes dos testes de integração entre componentes.
+**Estado:** Fase 1 concluída; OCR MCP, RAG MCP e Schedule API estão disponíveis como serviços independentes. O runtime já integra os três no comando `process`; a validação manual ponta a ponta com os serviços reais está em andamento.
 
 O projeto constrói um agente exam scheduler a partir de uma especificação declarativa. A Fase 1 valida o JSON e gera uma factory Python para o Google ADK. A Fase 2 prepara os serviços e integrações do fluxo de atendimento.
 
@@ -18,7 +18,7 @@ A geração produz código-fonte; não executa a factory nem inicia o agente. O 
 
 O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos durante uma nova gravação.
 
-O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` carrega a factory gerada, envia somente o UUID da imagem ao agente e captura o resultado estruturado de `extract_exams` por SSE. O RAG expõe `search_exams` por SSE e resolve nomes no catálogo fictício. A API de agendamento persiste reservas em SQLite e ainda não está conectada ao agente.
+O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome> --user <id>` carrega a factory gerada, envia somente o UUID da imagem ao agente e conduz o fluxo OCR via SSE, resolução no RAG via SSE e agendamento autenticado pela API. O RAG resolve nomes no catálogo fictício; a API persiste reservas em SQLite.
 
 ## Documentação
 
@@ -29,6 +29,7 @@ O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de
 - [Plano da Fase 2](docs/phase2-plan.md): decisões e checklist das próximas subfases.
 - [Workflow de desenvolvimento](docs/playbooks/development-workflow.md): ciclo de mudança, revisão, validação e transparência no uso de IA.
 - [Playbook de logging](docs/playbooks/logging.md): eventos estruturados, 5 Ws e política de privacidade.
+- [Observabilidade local](docs/observability.md): OpenObserve, Collector, credenciais e comandos de operação.
 - [Playbook de testes](docs/playbooks/testing.md): organização e execução das suítes nos containers.
 - [App runtime](apps/runtime/README.md): responsabilidades e limite do projeto Python executável.
 - [App RAG MCP](apps/rag_mcp/README.md): catálogo, busca, transporte SSE, logs e validações.
@@ -67,9 +68,10 @@ O OCR precisa da chave do Cloud Vision no ambiente de execução. Para Compose l
 ~~~dotenv
 GOOGLE_CLOUD_VISION_API_KEY=sua-chave
 GOOGLE_API_KEY=sua-chave-da-gemini
+ZAI_API_KEY=sua-chave-da-zai
 ~~~
 
-`GOOGLE_CLOUD_VISION_API_KEY` é entregue somente ao OCR. `GOOGLE_API_KEY` é entregue somente ao runtime para executar o modelo declarado na especificação. As chaves não são incluídas no build. O OCR atende em `http://ocr-mcp:8000/sse` e o RAG em `http://rag-mcp:8000/sse` dentro da rede Compose; nenhuma dessas portas é publicada no host.
+`GOOGLE_CLOUD_VISION_API_KEY` é entregue somente ao OCR. O Compose entrega `GOOGLE_API_KEY` e `ZAI_API_KEY` ao runtime; a factory gerada usa a credencial do provedor/modelo declarado em `specification.json`. As chaves não são incluídas no build. O OCR atende em `http://ocr-mcp:8000/sse` e o RAG em `http://rag-mcp:8000/sse` dentro da rede Compose; nenhuma dessas portas é publicada no host.
 
 Para parar o ambiente:
 
@@ -93,19 +95,19 @@ Gerar a factory Python:
 docker compose exec assistant-runtime python -m carrefour_runtime generate specification.json --output generated/agent.py
 ~~~
 
-O arquivo gerado é código-fonte. A execução e o despacho das tools são exercitados separadamente pelos testes com o `InMemoryRunner` do ADK e um modelo determinístico.
+O arquivo gerado é código-fonte. O comando `process` carrega a factory, conecta as implementações aprovadas das três tools e executa o agente pelo `InMemoryRunner` do ADK.
 
 ## Processar um pedido de exames
 
-Gere primeiro `generated/agent.py`, mantenha os arquivos de entrada em `tests/fixtures/images/` e passe somente o nome do arquivo:
+Gere primeiro `generated/agent.py`, mantenha os arquivos de entrada em `tests/fixtures/images/` e passe somente o nome do arquivo e o identificador local do usuário:
 
 ~~~sh
-docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br_simplified.png
+docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br_simplified.png --user user-1
 ~~~
 
-O comando valida o conteúdo PNG/JPG e o limite de 10 MB, cria uma cópia temporária identificada por UUID e executa a tool OCR. O caminho local e os bytes da imagem não entram no prompt. A saída normal é JSON `{"exams": [...]}` com código 0; uma revisão manual retorna `{"status":"review_required", ...}` com código 2; erros sanitizados são escritos em `stderr` com código 1. O runtime aceita um processamento por vez e remove a imagem temporária ao concluir.
+O comando valida o conteúdo PNG/JPG e o limite de 10 MB, cria uma cópia temporária identificada por UUID e executa as tools OCR, catálogo e agendamento na ordem definida. O prompt recebe o UUID, nunca o caminho ou os bytes da imagem. A saída de sucesso apresenta nomes canônicos e horários em uma mensagem humanizada; respostas parciais informam separadamente agendamentos existentes, novos e sem disponibilidade. Resultados que exigem revisão exibem uma mensagem genérica e retornam código 2; erros sanitizados são escritos em `stderr` com código 1. O runtime aceita um processamento por vez e remove a imagem temporária ao concluir.
 
-Os eventos operacionais do runtime e do OCR são logs JSON enviados a `stderr`; `stdout` continua reservado ao resultado JSON. Ao usar `docker compose exec`, os dois canais aparecem no terminal. Para acompanhar os logs do servidor OCR, cujo processo é o principal do container:
+Os eventos operacionais do runtime e do OCR são logs JSON enviados a `stderr`; `stdout` fica reservado à mensagem funcional humanizada. Ao usar `docker compose exec`, os dois canais aparecem no terminal. Para acompanhar os logs do servidor OCR, cujo processo é o principal do container:
 
 ~~~sh
 docker compose logs -f ocr-mcp
@@ -115,7 +117,7 @@ Os eventos não incluem nome do arquivo, UUID da imagem, nomes de exames, texto 
 
 ## Testes e análise estática
 
-As imagens de desenvolvimento incluem pytest, Ruff e Mypy para executar verificações no container. A suíte padrão contém testes unitários e testes do fluxo ADK/MCP com um servidor SSE local e modelo determinístico; ela não chama Gemini nem Cloud Vision reais. O E2E manual descrito abaixo é a exceção: chama Cloud Vision real, mas mantém o modelo Gemini determinístico.
+As imagens de desenvolvimento incluem pytest, Ruff e Mypy para executar verificações no container. A suíte padrão contém testes unitários e testes do fluxo ADK/MCP/API com serviços locais e modelo determinístico; ela não chama provedores externos. A validação manual descrita abaixo percorre o comando normal com as credenciais configuradas e chama Vision e o modelo declarados na especificação.
 
 ~~~sh
 docker compose exec -w /workspace/apps/runtime assistant-runtime pytest -q
@@ -156,47 +158,41 @@ Quando `schedule-api` estiver em execução, seu Swagger está disponível somen
 no host local em <http://localhost:8001/docs>. Consulte o README do app para
 emitir o JWT local de demonstração e testar o `POST /appointments`.
 
-## E2E manual com Cloud Vision real
+## E2E manual do fluxo completo
 
-Este E2E é optativo e fica fora da suíte padrão e do CI. Ele percorre o comando
-`process --path`, o armazenamento temporário, o agente ADK, o OCR MCP por SSE e
-o Cloud Vision real. O modelo do agente é substituído no teste por um modelo
-determinístico, então esta validação não chama Gemini. Cada execução faz uma
-requisição real ao Cloud Vision.
+Esta validação simula o uso pelo avaliador: sobe os containers independentes,
+valida e gera o agente a partir da especificação e executa o comando normal
+`process`. O runtime usa o provedor/modelo declarados em `specification.json`,
+Cloud Vision faz o OCR, o RAG resolve os exames e a Schedule API persiste as
+reservas. Não é um teste pytest nem substitui as suítes locais.
 
-Configure `GOOGLE_CLOUD_VISION_API_KEY` no `.env` ignorado pelo Git e inicie os
-serviços. Gere também a factory do agente uma vez:
+Configure `GOOGLE_CLOUD_VISION_API_KEY` e a chave do provedor/modelo da
+especificação (`ZAI_API_KEY` no exemplo atual) no `.env` ignorado pelo Git. O
+Compose local também fornece um segredo JWT de demonstração se
+`CARREFOUR_SCHEDULE_JWT_SECRET` não estiver definido. Em seguida, construa e
+inicie todos os serviços e gere o agente:
 
 ~~~sh
-docker compose up -d --build assistant-runtime ocr-mcp rag-mcp
+docker compose up -d --build assistant-runtime ocr-mcp rag-mcp schedule-api
+docker compose exec assistant-runtime python -m carrefour_runtime validate specification.json
 docker compose exec assistant-runtime python -m carrefour_runtime generate specification.json --output generated/agent.py
 ~~~
 
-Execute cada fixture separadamente. `-s` mostra o JSON retornado e o tempo total
-do fluxo; o teste aceita somente esses dois nomes de arquivo:
+Processe uma fixture por vez; `--user` é obrigatório e identifica o paciente
+localmente na API de agendamento:
 
 ~~~sh
-docker compose exec -w /workspace/apps/runtime \
-  -e RUN_LIVE_VISION_E2E=1 \
-  -e E2E_IMAGE_NAME=exam_request_pt_br.png \
-  -e CARREFOUR_GENERATED_AGENT_PATH=/workspace/generated/agent.py \
-  assistant-runtime pytest -s tests/e2e/test_live_vision.py
+docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br.png --user user-1
+docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br_simplified.png --user user-1
 ~~~
 
-~~~sh
-docker compose exec -w /workspace/apps/runtime \
-  -e RUN_LIVE_VISION_E2E=1 \
-  -e E2E_IMAGE_NAME=exam_request_pt_br_simplified.png \
-  -e CARREFOUR_GENERATED_AGENT_PATH=/workspace/generated/agent.py \
-  assistant-runtime pytest -s tests/e2e/test_live_vision.py
-~~~
-
-O primeiro caso deve retornar cinco exames; o formulário deve retornar os seis
-exames marcados. O teste compara o resultado esperado, confirma que o prompt
-contém apenas o UUID, verifica que o original não mudou e que a cópia temporária
-foi removida. O comando normal `python -m carrefour_runtime process --path`
-continua usando o modelo da especificação; para esta validação sem Gemini, use
-os comandos E2E acima.
+As mensagens indicam os exames agendados ou já existentes, seus horários,
+indisponibilidades parciais, ausência de exames ou necessidade de revisão. Não
+exibem códigos de catálogo, IDs de agendamento ou conteúdo incerto do OCR. A
+execução real faz chamadas externas ao Cloud Vision e ao modelo configurado; ela
+não pertence à suíte padrão. O runtime remove a cópia temporária da imagem ao
+encerrar cada processamento; o SQLite mantém as reservas para que uma nova
+execução do mesmo usuário demonstre a reconciliação incremental.
 
 ## Referências do Google ADK
 

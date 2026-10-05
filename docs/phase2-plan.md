@@ -1,6 +1,6 @@
 # Plano da Fase 2
 
-**Estado:** a aprovação formal do escopo geral em `phase2-spec.md` continua em revisão. A subfase 2.1 está implementada e validada: as duas execuções ponta a ponta com Cloud Vision real e modelo determinístico passaram, assim como as suítes automatizadas, análise estática, cobertura, locks e configuração do Compose. A revisão local do diff não encontrou pendências de aderência à especificação.
+**Estado:** OCR (2.1), RAG (2.2) e Schedule API (2.3) estão implementados. O runtime já compõe o agente com as três capacidades e há cobertura local determinística do fluxo. A etapa atual é a validação manual do caminho normal pelo Compose, com o modelo declarado na especificação, Cloud Vision real e persistência da API; só depois dela o fluxo completo será considerado validado.
 
 **Regra de trabalho:** revisar a especificação e os contratos antes de implementar cada componente; avançar uma etapa por vez, validar o entregável e documentar as decisões antes de prosseguir.
 
@@ -98,7 +98,7 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 - [x] Criar harness E2E manual e optativo no runtime, com modelo determinístico e servidor OCR/Vision reais.
 - [x] Executar explicitamente, fora do CI, o fluxo Compose nas duas imagens usando Cloud Vision real e modelo determinístico; não chamar Gemini.
-- [x] Conferir os exames e o JSON do CLI; a revisão visual confirmou a seleção esperada. O harness verificou os marcadores sintéticos de PII na saída e nos erros, a integridade do original e a remoção da cópia temporária. A inspeção manual dos logs do OCR no Compose encontrou apenas metadados de transporte/status, sem conteúdo da imagem ou dos exames.
+- [x] Conferir os exames retornados pela tool OCR; a revisão visual confirmou a seleção esperada. O harness verificou os marcadores sintéticos de PII na saída e nos erros, a integridade do original e a remoção da cópia temporária. A inspeção manual dos logs do OCR no Compose encontrou apenas metadados de transporte/status, sem conteúdo da imagem ou dos exames.
 - [x] Verificar a rejeição de um segundo processamento simultâneo no teste unitário de `ProcessingLock`, sem fazer uma segunda chamada real ao Vision.
 - [x] Registrar a duração ponta a ponta e manter os timeouts e a política sem retries; as medições não isolam o tempo de resposta do Vision.
 - [x] Rever o tratamento de marcações ambíguas: as duas imagens não produziram casos ambíguos; permanece a resposta `review_required` para classificações incertas, coberta pelos testes locais.
@@ -243,19 +243,19 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 ### 2.5 — Integração do fluxo completo no agente
 
-- [ ] Ligar os IDs de catálogo e agendamento da Fase 1 às implementações aprovadas.
-- [ ] Montar o agente com os serviços locais e a tool de OCR já entregue na subfase 2.1.
-- [ ] Exercitar os fluxos com `InMemoryRunner` e modelo determinístico.
-- [ ] Verificar sucesso, falha de tool e resposta a erros sem chamar Gemini.
+- [x] Registrar no runtime as implementações aprovadas para OCR, catálogo e agendamento, sem aceitar endpoints arbitrários da especificação.
+- [x] Executar o agente ADK com as três tools na ordem definida, capturar respostas estruturadas e rejeitar chamadas fora da sequência autorizada.
+- [x] Cobrir o fluxo controlado com servidor OCR/RAG SSE local, API simulada e modelo determinístico; falhas/revisão não prosseguem para agendamento.
 
 **Entrega candidata:** agente usando OCR, catálogo e agendamento em cenários controlados.
 
 ### 2.6 — Ambiente local e validação ponta a ponta
 
 - [x] Configurar a base do runtime no Docker Compose, montar o workspace e declarar o volume `tmpfs`.
-- [ ] Compor no Docker Compose os serviços já implementados nas subfases anteriores para a demonstração completa; o serviço OCR e seu mount somente leitura são entregues na subfase 2.1.
-- [ ] Executar o fluxo completo com serviços locais após a entrega de OCR, catálogo e agendamento.
-- [ ] Documentar como iniciar e verificar o ambiente completo.
+- [x] Compor OCR MCP, RAG MCP e Schedule API no Docker Compose e conectar o runtime pela rede interna.
+- [x] Documentar a execução normal de `validate` → `generate` → `process` no README principal.
+- [x] Apresentar no CLI mensagens humanizadas com nomes canônicos e horários, mantendo códigos/IDs internos fora da saída e respostas de revisão genéricas.
+- [ ] Executar manualmente o fluxo normal nas duas imagens e revisar a mensagem humanizada, o diff de agendamento para o mesmo usuário, a limpeza do tmpfs e os logs/traces.
 - [ ] Avaliar teste opcional com Gemini real, credenciais configuradas e chamadas externas.
 
 **Entrega candidata:** demonstração local reproduzível; integração com modelo real claramente identificada como opcional ou obrigatória conforme o desafio.
@@ -264,11 +264,11 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 **Objetivo:** tornar uma execução rastreável entre o CLI/runtime, o transporte MCP por SSE, o serviço OCR e a chamada ao Cloud Vision, sem registrar imagem, dados pessoais ou conteúdo clínico.
 
-**Decisão aprovada para o ambiente local:** usar OpenTelemetry como padrão de instrumentação e um OpenTelemetry Collector como ponto de recepção/exportação OTLP. Para visualizar e armazenar localmente os sinais, usar OpenObserve OSS em modo single-node. O Compose terá esses componentes como serviços opcionais do ambiente de desenvolvimento; a interface web ficará acessível somente pelo host local. A persistência de telemetria usará volume próprio, separado do `tmpfs` de imagens. Esta decisão descreve a stack local do projeto, não um dimensionamento de produção. Registrar e revisar a licença AGPL-3.0 do OpenObserve antes de qualquer distribuição do stack.
+**Decisão aprovada para o ambiente local:** usar OpenTelemetry como padrão de instrumentação e um OpenTelemetry Collector como ponto de recepção/exportação OTLP. Para visualizar e armazenar localmente os sinais, usar OpenObserve OSS em modo single-node. Os componentes fazem parte do `compose.yaml` e compartilham a rede interna dos apps; a interface web fica acessível somente pelo host local. A persistência de telemetria usa volume próprio, separado do `tmpfs` de imagens. Esta decisão descreve a stack local do projeto, não um dimensionamento de produção. Registrar e revisar a licença AGPL-3.0 do OpenObserve antes de qualquer distribuição do stack.
 
 **Princípios de instrumentação:**
 
-- Manter o JSON de resultado como única saída de sucesso em `stdout`; logs operacionais estruturados seguem para `stderr` e para o pipeline de telemetria.
+- Manter a mensagem funcional humanizada como saída de sucesso em `stdout`; logs operacionais estruturados seguem para `stderr` e para o pipeline de telemetria.
 - Fazer a execução continuar se o Collector ou o OpenObserve estiver indisponível; telemetria não pode impedir nem alterar o processamento.
 - Correlacionar logs e spans pelo `trace_id`, sem usar imagem, nome de arquivo ou dado do paciente como identificador.
 - Aplicar os 5 Ws como perguntas para cada evento: quando (`timestamp`), quem (`service`), o quê (`event`), onde (`component`) e resultado/motivo (`outcome`, `error_code`, `error_type`). O `level` indica severidade.
@@ -280,15 +280,28 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 #### Etapas propostas
 
 - [x] Definir o catálogo inicial de eventos de log, níveis, códigos de erro e allowlist de atributos.
-- [x] Padronizar logs JSON nos dois apps. Os registros operacionais são emitidos em `stderr`, preservando `stdout` exclusivamente para o JSON de resultado do CLI. `docker compose exec` encaminha ambos os canais ao terminal; a retenção por `docker compose logs` vale para o processo principal do container, não deve ser presumida para comandos `exec`.
+- [x] Padronizar logs JSON nos dois apps. Os registros operacionais são emitidos em `stderr`, preservando `stdout` exclusivamente para a mensagem funcional do CLI. `docker compose exec` encaminha ambos os canais ao terminal; a retenção por `docker compose logs` vale para o processo principal do container, não deve ser presumida para comandos `exec`.
 - [x] Revisar os eventos com os 5 Ws, incluir `component`, classificar falhas com códigos estáveis, medir duração das etapas principais e testar que conteúdo livre e dados sensíveis não entram nos logs.
-- [ ] Instrumentar o runtime com um span raiz de `process` e spans para validação/leitura da imagem, armazenamento, execução ADK, chamada MCP e limpeza. Registrar resultado e duração sem anexar dados clínicos.
-- [ ] Instrumentar o OCR com spans para entrada da tool, resolução por UUID, chamada HTTPX ao Vision, decodificação e extração local. Instrumentar as requisições Starlette e HTTPX onde isso não duplicar spans; verificar a propagação do contexto pelo transporte SSE do SDK MCP.
-- [ ] Se o SDK ou o transporte SSE não propagar contexto de trace entre cliente e servidor, escolher e documentar uma correlação segura entre serviços antes de implementar um identificador alternativo; não reutilizar o `image_id` para isso.
-- [ ] Adicionar OpenTelemetry Collector e OpenObserve OSS ao Compose local, com configuração OTLP, persistência separada das imagens e publicação da UI apenas em loopback. Segredos e credenciais de acesso à UI ficam em ambiente local, fora da imagem e do Git.
+- [ ] Instrumentar o runtime com um span raiz de `process` e spans para validação/leitura da imagem, armazenamento, execução ADK, chamada MCP e limpeza. Registrar resultado e duração sem anexar dados clínicos. (O span raiz, armazenamento, execução MCP e limpeza foram implementados; faltam spans separados de validação/leitura e execução ADK.)
+- [ ] Instrumentar o OCR com spans para entrada da tool, resolução por UUID, chamada HTTPX ao Vision, decodificação e extração local. Instrumentar as requisições Starlette e HTTPX onde isso não duplicar spans. (A chamada ao Vision já tem span manual; as demais etapas ficam pendentes.)
+- [x] Confirmar a propagação de contexto no SDK MCP: o cliente injeta W3C trace context em `_meta` e o servidor usa esse contexto como pai. Uma chamada SSE do runtime ao RAG MCP foi localizada no OpenObserve com um `trace_id`, spans dos dois serviços e nenhum identificador alternativo baseado em `image_id`.
+- [x] Adicionar OpenTelemetry Collector e OpenObserve OSS ao Compose principal; receber OTLP/HTTP para traces e logs, encaminhar para streams separados, persistir em volume próprio e publicar a UI apenas em loopback. Credenciais ficam em `.env.observability`, fora da imagem e do Git.
+- [x] Configurar runtime, OCR MCP, RAG MCP e Schedule API para exportar traces e logs OTLP ao Collector pela rede do Compose; manter eventos INFO locais em `stderr` e exportar somente os campos aprovados. Instrumentar chamadas HTTPX no runtime e a entrada ASGI da API de agendamento, sem duplicar a instrumentação e propagação nativas do SDK MCP. O SDK usa processadores em lote; o encerramento do CLI limita o flush a 1 segundo e falhas de configuração/exportação não interrompem o processamento.
 - [ ] Testar instrumentação com exporters em memória e sem depender do backend. Cobrir sucesso, falhas de Vision/MCP, limpeza e indisponibilidade do Collector; confirmar spans pai/filho ou a correlação alternativa aprovada.
 - [ ] Fazer uma execução manual via Compose e conferir no backend os logs e spans de ponta a ponta. Incluir marcadores sintéticos de PII e verificar que nenhum aparece em logs, atributos, eventos ou exceções exportadas.
+- [ ] Exibir no CLI um link clicável para a trace do processo, preservando a mensagem funcional em `stdout` e emitindo o link/log operacional em `stderr` e no pipeline INFO.
 - [ ] Documentar como subir, acessar, desligar e limpar a stack local, incluindo retenção e remoção do volume de telemetria.
+
+**Validação do checkpoint de exportação:** um fluxo sintético do `ProcessService`
+no container runtime chegou ao OpenObserve como a trace `process`, com quatro
+spans do `assistant-runtime`; o executor OCR foi simulado para evitar chamadas
+externas. Os seis eventos INFO desse fluxo chegaram ao stream de logs com o
+mesmo `trace_id`. Uma chamada SSE sintética do runtime ao RAG MCP também foi
+localizada como uma trace única com sete spans (`assistant-runtime`: 4;
+`rag-mcp`: 3), e o log `rag.search.completed` compartilhou o mesmo `trace_id`.
+Um receptor OTLP local recebeu POSTs para `/v1/traces` e `/v1/logs`; com o
+endpoint recusando conexão, o processo terminou normalmente em cerca de um
+segundo. O fluxo completo runtime → OCR MCP → Vision permanece pendente.
 
 #### Catálogo local de eventos
 
@@ -297,8 +310,8 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 | `process.started` | Runtime / `process_service` | INFO | — |
 | `process.lock.rejected` | Runtime / `processing_lock` | WARNING | `error_code`, `error_type` |
 | `process.image.stored` | Runtime / `temporary_image_store` | INFO | `duration_ms` |
-| `process.ocr.started` | Runtime / `ocr_executor` | INFO | — |
-| `process.ocr.completed` | Runtime / `ocr_executor` | INFO ou WARNING | `duration_ms`, `outcome` |
+| `process.workflow.started` | Runtime / `workflow_executor` | INFO | — |
+| `process.workflow.completed` | Runtime / `workflow_executor` | INFO ou WARNING | `duration_ms`, `outcome` |
 | `process.image_cleanup.completed` | Runtime / `temporary_image_store` | INFO | `outcome` |
 | `process.image_cleanup.failed` | Runtime / `temporary_image_store` | ERROR | `error_code`, `error_type` |
 | `process.completed` | Runtime / `process_service` | INFO ou WARNING | `duration_ms`, `outcome` |
@@ -332,7 +345,7 @@ Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`.
 
 **Correlação:** a Schedule API gera um `request_id` por requisição, devolve-o em `X-Request-ID` e inclui-o nos eventos HTTP e de aplicação daquela chamada. Ele não é aceito do cliente. Isso correlaciona eventos dentro da Schedule API, mas não substitui um `trace_id` distribuído entre runtime, OCR MCP, RAG e Schedule API. A propagação distribuída fica para a instrumentação OpenTelemetry futura, incluindo validação pelo SSE. O formatador mantém uma allowlist e descarta a mensagem livre do `LogRecord`, evitando que conteúdo arbitrário seja serializado.
 
-**Critérios de aceite:** uma execução pode ser acompanhada do runtime até o Vision; falhas mostram a etapa e uma classificação técnica sem conteúdo sensível; a saída JSON do CLI não muda; a indisponibilidade do backend não falha o atendimento; e a busca nos dados coletados não encontra os marcadores sintéticos de PII, imagem ou credenciais.
+**Critérios de aceite:** uma execução pode ser acompanhada do runtime até o Vision; falhas mostram a etapa e uma classificação técnica sem conteúdo sensível; a mensagem funcional do CLI não muda; a indisponibilidade do backend não falha o atendimento; e a busca nos dados coletados não encontra os marcadores sintéticos de PII, imagem ou credenciais.
 
 **Fora da primeira entrega:** dashboards operacionais elaborados, alertas, métricas de negócio e implantação em produção. Primeiro estabilizar nomes, cardinalidade, propagação e política de privacidade; depois decidir quais métricas e painéis são úteis. Para métricas, preferir instrumentos e exportação estáveis do OpenTelemetry. A API de Logs do OpenTelemetry para Python está marcada como *Development* na documentação atual; encapsular a integração de logs para permitir revisão sem acoplar os apps a detalhes experimentais do SDK.
 

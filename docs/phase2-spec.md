@@ -1,12 +1,12 @@
 # Especificação técnica — Fase 2
 
-**Estado:** esta especificação descreve a fatia de OCR e os limites compartilhados. O OCR da subfase 2.1 está implementado e validado; o RAG da 2.2 e a API independente de agendamento da 2.3 também estão implementados. A integração desses componentes ao agente fica para uma etapa posterior e aguarda a validação desta API.
+**Estado:** esta especificação registra a fatia inicial de OCR e os limites compartilhados. OCR, RAG e API de agendamento estão implementados como serviços independentes e ligados pelo runtime. A validação manual do fluxo completo com o modelo configurado e serviços reais está em andamento; o comando reproduzível está no [README](../README.md).
 
 ## 1. Objetivo e escopo
 
 A Fase 2 conecta o agente `exam_scheduler` da Fase 1 aos serviços necessários para atender uma solicitação de exames: receber a imagem do pedido, identificar os exames, consultar o catálogo e solicitar um agendamento. O PRD descreve os requisitos do desafio; este documento detalha a arquitetura progressivamente, antes da implementação de cada subfase.
 
-O primeiro entregável é a fatia vertical de OCR: executar `process --path <nome-do-arquivo>` dentro do container, enviar a imagem ao OCR por meio do agente e apresentar os exames no CLI. Essa fatia foi implementada e validada. Os contratos do catálogo e da API de agendamento estão detalhados nas respectivas etapas da [Fase 2](phase2-plan.md); a conexão deles ao agente permanece fora do fluxo implementado.
+O primeiro entregável foi a fatia vertical de OCR: executar o CLI dentro do container, enviar a imagem ao OCR por meio do agente e apresentar os exames. Essa fatia foi implementada e validada isoladamente. O runtime agora conduz o fluxo completo: OCR, resolução no catálogo e agendamento; os contratos de cada componente estão detalhados nas respectivas etapas da [Fase 2](phase2-plan.md).
 
 Esta especificação é deliberadamente incremental. Requisitos futuros aparecem como contexto e permanecem em aberto até a subfase correspondente; não são autorização para implementá-los junto com a fatia OCR.
 
@@ -19,12 +19,12 @@ Esta especificação é deliberadamente incremental. Requisitos futuros aparecem
 | F2-03 | Passar ao agente apenas uma referência interna à imagem. | Runtime e armazenamento temporário | A imagem é armazenada em `tmpfs` sob UUID; a tool recebe o UUID, nunca um caminho ou URL escolhido pelo modelo. |
 | F2-04 | Permitir que o agente acione OCR por uma tool aprovada. | Agente ADK e servidor MCP de OCR | O agente chama a tool de OCR com o UUID; o servidor resolve o arquivo dentro do diretório permitido. |
 | F2-05 | Extrair exames sem enviar a imagem a um LLM. | Servidor MCP e Google Cloud Vision | Vision recebe os bytes para OCR; Gemini ou outro modelo de linguagem não recebe a imagem original. A identificação de marcações é local, conforme a POC dos dois layouts de referência. |
-| F2-06 | Apresentar uma resposta estável no CLI. | CLI | Saída de sucesso em JSON no formato `{"exams": ["Hemograma completo"]}`; lista vazia é uma resposta válida. Todas as chaves JSON são em inglês. |
+| F2-06 | Apresentar uma resposta estável no CLI. | CLI e runtime | A tool OCR mantém o contrato `{"exams": [...]}`; no fluxo completo, o CLI apresenta nomes canônicos e horários em português, sem códigos ou IDs, e usa uma mensagem genérica para revisão. Contratos estruturados entre serviços mantêm chaves em inglês. |
 | F2-07 | Apagar a cópia temporária ao fim do atendimento. | Runtime e `TemporaryImageStore` | Imagem removida no caminho de sucesso e no de erro; uma nova gravação remove arquivos UUID órfãos com mais de 30 minutos. |
 | F2-08 | Reduzir a exposição de dados pessoais do paciente. | Barreira local no servidor MCP de OCR e runtime | Antes de responder, a barreira analisa os nomes que sairiam em `exams` e `ambiguous_exams`; ao detectar uma categoria configurada, suprime o resultado inteiro. Logs e erros são sanitizados. A detecção é limitada e não garante cobertura de toda PII. O original no diretório de entrada não é alterado nem apagado. |
 | F2-09 | Executar o fluxo localmente em containers. | Docker Compose | O comando é executado dentro do container; a imagem de entrada está visível pelo mount de workspace e o armazenamento temporário é compartilhado com o OCR em modo somente leitura. |
 
-Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs correspondentes e fluxo completo — são registrados no [PRD](PRD.md) e no [plano da Fase 2](phase2-plan.md). As etapas 2.2 e 2.3 registram seus contratos, implementação independente, testes e limites atuais; a integração do agente permanece pendente.
+Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs correspondentes e fluxo completo — são registrados no [PRD](PRD.md) e no [plano da Fase 2](phase2-plan.md). As etapas 2.2 e 2.3 registram seus contratos, implementação independente, testes e limites atuais; a validação manual do fluxo conectado permanece pendente.
 
 ## 3. Contratos do primeiro fluxo
 
@@ -33,7 +33,7 @@ Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs
 Comando previsto, executado no serviço `assistant-runtime`:
 
 ```text
-docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br.png
+docker compose exec assistant-runtime python -m carrefour_runtime process --path exam_request_pt_br.png --user user-1
 ```
 
 - `--path` recebe apenas o nome do arquivo, sem caminho absoluto ou componentes `..`.
@@ -45,9 +45,9 @@ docker compose exec assistant-runtime python -m carrefour_runtime process --path
 
 A pasta de fixtures é o diretório de entrada desta demonstração. Um diretório ou mecanismo de upload para uso fora das fixtures será decidido antes de ampliar essa interface.
 
-### 3.2 Resposta funcional
+### 3.2 Contrato da tool OCR e apresentação do fluxo
 
-Sucesso é serializado como JSON no `stdout`, preservando a ordem reconhecida dos exames:
+A tool OCR mantém um contrato estruturado em JSON, preservando a ordem reconhecida dos exames:
 
 ```json
 {"exams": ["Hemograma completo", "Glicemia de jejum"]}
@@ -59,9 +59,9 @@ Se nenhum exame for identificado com segurança, a resposta sem ambiguidade é:
 {"exams": []}
 ```
 
-O CLI não completa nomes, não inventa exames e não consulta ou normaliza contra o catálogo nesta subfase. Nomes de chaves JSON são sempre em inglês; valores dos nomes de exames permanecem como reconhecidos no documento. Quando houver marcação ambígua, o CLI imprime uma resposta JSON com status `review_required` e chaves `exams` e `ambiguous_exams`, e termina com código distinto de zero. Falhas técnicas sanitizadas vão para `stderr`.
+Esse é o contrato da tool OCR, não a apresentação final do CLI. No fluxo completo, o RAG consulta os nomes extraídos e o agente só envia ao agendamento códigos resolvidos pelo catálogo. O runtime associa os códigos retornados pela Schedule API aos nomes canônicos do RAG; o CLI apresenta em português os exames e horários, sem exibir códigos de catálogo ou IDs de agendamento. Respostas parciais indicam separadamente o que já estava agendado, o que foi agendado agora e o que não encontrou disponibilidade. Quando OCR ou RAG exigirem revisão, o CLI apresenta uma mensagem genérica sem nomes incertos ou candidatos e termina com código 2. A ausência de exames é uma resposta funcional com código 0. Falhas técnicas sanitizadas e logs JSON vão para `stderr`; mensagens funcionais vão para `stdout`.
 
-Exemplo de resposta que solicita revisão manual:
+Exemplo do JSON estruturado da tool OCR que solicita revisão manual:
 
 ```json
 {"status": "review_required", "exams": ["Hemograma completo"], "ambiguous_exams": ["TSH"]}
@@ -98,7 +98,7 @@ As responsabilidades abaixo cobrem somente a fatia de OCR. A busca no catálogo 
 
 | Componente | Responsabilidade nesta fatia |
 |---|---|
-| CLI `process` | Adaptar argumentos, compor o caso de uso, exibir o JSON de resultado e mapear o código de saída. |
+| CLI `process` | Adaptar argumentos, compor o caso de uso, apresentar o resultado humanizado e mapear o código de saída. |
 | `ProcessService` | Resolver e ler a entrada permitida, armazenar a cópia, chamar o executor ADK e garantir sua remoção em `finally`. |
 | `TemporaryImageStore` | Validar bytes, criar UUID, gravar atomicamente, remover por UUID e limpar órfãos durante uma nova gravação. |
 | Factory gerada em `agent.py` | Criar o agente a partir do mapa de tools aprovado, mantendo o contrato exato da Fase 1. |
@@ -139,7 +139,7 @@ O runtime é um app Python independente em `apps/runtime/`, com seu próprio `py
 - Testes do fluxo verificam que a tool recebe apenas o UUID, que a imagem é apagada em sucesso e erro, e que marcadores de PII bloqueados não aparecem na resposta, no CLI, em logs ou em erros.
 - Testes de seleção cobrem a fixture sem checkboxes e a fixture com X, incluindo marcação ambígua.
 
-### Teste ponta a ponta com Vision real
+### Validação histórica da fatia OCR com Vision real
 
 O entregável da subfase inclui um teste de integração ponta a ponta, optativo e executado dentro do ambiente Docker:
 
@@ -150,13 +150,14 @@ O entregável da subfase inclui um teste de integração ponta a ponta, optativo
 - Verificar também que o arquivo de origem permanece intacto, a cópia em `tmpfs` é removida ao final e a resposta não contém PII.
 - Exigir credenciais do Vision configuradas fora do repositório. O teste não é executado automaticamente no CI; a execução usa Cloud Vision real e deve ser explícita.
 
-O harness está em `apps/runtime/tests/e2e/test_live_vision.py`. Ele só roda com
-`RUN_LIVE_VISION_E2E=1` e seleciona uma das duas fixtures por
-`E2E_IMAGE_NAME`; os comandos reproduzíveis estão no README principal. A
-validação real foi executada em 2026-10-04. `exam_request_pt_br.png` retornou
+Na validação da fatia OCR, foi usado um harness temporário em
+`apps/runtime/tests/e2e/test_live_vision.py`. Esse harness foi removido quando o
+runtime passou a executar somente o fluxo completo; o E2E atual é feito pelo
+comando normal `process`, documentado no README principal. A validação OCR
+isolada foi executada em 2026-10-04. `exam_request_pt_br.png` retornou
 cinco exames em 4,47 s e `exam_request_pt_br_simplified.png` retornou os seis
 exames marcados em 4,57 s. O usuário confirmou visualmente que as seleções
-correspondem às imagens. O harness confirmou o resultado JSON esperado, uma
+correspondem às imagens. O harness confirmou o resultado estruturado esperado, uma
 chamada à tool pelo modelo determinístico, o uso apenas do UUID no prompt, a
 remoção da cópia temporária, a integridade do arquivo original e a ausência dos
 marcadores sintéticos de PII na saída e nos erros. O Cloud Vision foi chamado
@@ -177,17 +178,17 @@ Os testes automatizados locais continuam simulando o Vision para validar falhas 
 
 ### Critério de aceite da subfase 2.1
 
-Executar via Docker Compose `process --path <nome>` para as duas imagens de referência, obter a seleção de exames esperada no JSON do CLI usando Cloud Vision real e um modelo determinístico, não enviar a imagem a um LLM, e remover a cópia temporária em sucesso e em falha. Erros não devem expor PII nem deixar arquivos após a finalização.
+Executar via Docker Compose `process --path <nome>` para as duas imagens de referência, conferir as mensagens humanizadas e os agendamentos esperados usando Cloud Vision real, não enviar a imagem a um LLM, e remover a cópia temporária em sucesso e em falha. Erros não devem expor PII nem deixar arquivos após a finalização.
 
 ## 7. Fases posteriores — somente visão geral
 
 O catálogo/RAG da subfase 2.2 e a API independente de agendamento da 2.3 já
-estão implementados. A revisão da API pelo usuário antecede a integração entre
-componentes. O trabalho restante da Fase 2 é:
+estão implementados. O runtime integra os componentes; a validação manual do
+fluxo real antecede o fechamento desta entrega. O trabalho restante da Fase 2 é:
 
 1. **Privacidade transversal:** verificar que API, busca, agente e logs preservam a fronteira definida no OCR.
-2. **Integração do agente:** ligar OCR, catálogo e agendamento e testar o fluxo com ferramentas locais e modelo determinístico.
-3. **Ambiente completo:** compor todos os serviços no Docker Compose e avaliar separadamente qualquer execução opcional com Gemini real.
+2. **Validação do fluxo:** executar o comando normal com OCR real, modelo da especificação, RAG e Schedule API; revisar saída, persistência, logs, traces e limpeza temporária.
+3. **Evolução opcional:** avaliar separadamente qualquer execução com outro provedor/modelo ou novas capacidades.
 
 O [plano da Fase 2](phase2-plan.md) acompanha a ordem, as decisões e o checklist.
 
