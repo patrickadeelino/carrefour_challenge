@@ -2,6 +2,35 @@ name: carrefour-challenge
 
 # Cada build também recebe o pacote compartilhado usado pelos apps.
 services:
+  openobserve:
+    image: public.ecr.aws/zinclabs/openobserve:v1.0.0
+    init: true
+    env_file:
+      - path: .env.observability
+        required: false
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+    ports:
+      - "127.0.0.1:5080:5080"
+    volumes:
+      - openobserve-data:/data
+    restart: unless-stopped
+
+  otel-collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.162.0
+    init: true
+    env_file:
+      - path: .env.observability
+        required: false
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      openobserve:
+        condition: service_started
+    restart: unless-stopped
+
   ocr-mcp:
     image: carrefour-challenge-ocr-mcp:dev
     build:
@@ -14,8 +43,15 @@ services:
     environment:
       CARREFOUR_IMAGE_STORAGE_PATH: /var/run/carrefour/images
       CARREFOUR_OCR_ALLOWED_HOSTS: ocr-mcp:8000
+      CARREFOUR_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_METRICS_EXPORTER: none
+      OTEL_PYTHON_HTTPX_EXCLUDED_URLS: vision.googleapis.com
       # A credencial é injetada em execução e não entra na imagem.
       GOOGLE_CLOUD_VISION_API_KEY: ${GOOGLE_CLOUD_VISION_API_KEY:-}
+    depends_on:
+      otel-collector:
+        condition: service_started
     volumes:
       # O OCR só precisa ler as imagens gravadas pelo runtime.
       - type: volume
@@ -35,6 +71,12 @@ services:
     init: true
     environment:
       CARREFOUR_RAG_ALLOWED_HOSTS: rag-mcp:8000
+      CARREFOUR_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_METRICS_EXPORTER: none
+    depends_on:
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   schedule-api:
@@ -50,6 +92,12 @@ services:
       CARREFOUR_SCHEDULE_DATABASE_PATH: /var/lib/carrefour/schedule/appointments.sqlite3
       CARREFOUR_SCHEDULE_ENABLE_DEMO_TOKEN_ISSUER: "true"
       CARREFOUR_SCHEDULE_JWT_SECRET: ${CARREFOUR_SCHEDULE_JWT_SECRET:-local-only-secret-change-before-use-123456}
+      CARREFOUR_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_METRICS_EXPORTER: none
+    depends_on:
+      otel-collector:
+        condition: service_started
     ports:
       - "127.0.0.1:8001:8000"
     volumes:
@@ -71,10 +119,25 @@ services:
     init: true
     # Deixa o container disponível para comandos via `docker compose exec`.
     command: ["sleep", "infinity"]
+    depends_on:
+      ocr-mcp:
+        condition: service_started
+      rag-mcp:
+        condition: service_started
+      schedule-api:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     environment:
       CARREFOUR_IMAGE_STORAGE_PATH: /var/run/carrefour/images
+      CARREFOUR_SCHEDULE_API_URL: http://schedule-api:8000
+      CARREFOUR_SCHEDULE_JWT_SECRET: ${CARREFOUR_SCHEDULE_JWT_SECRET:-local-only-secret-change-before-use-123456}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
       GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
+      CARREFOUR_OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_METRICS_EXPORTER: none
     volumes:
       - image-storage:/var/run/carrefour/images
       - type: bind
@@ -86,6 +149,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  openobserve-data:
   schedule-database:
   image-storage:
     driver: local

@@ -1,11 +1,15 @@
 import asyncio
+import atexit
 import logging
 import os
 from pathlib import Path
 
 import httpx
 import uvicorn
-from carrefour_observability.logging_config import configure_json_logging
+from carrefour_observability.telemetry import (
+    configure_telemetry,
+    shutdown_telemetry,
+)
 
 from carrefour_ocr_mcp.server import create_sse_app
 from carrefour_ocr_mcp.services.exam_extractor.vision_exam_extractor import (
@@ -85,7 +89,8 @@ async def _serve() -> None:
 
 
 def main() -> None:
-    configure_json_logging("carrefour_ocr_mcp", "ocr-mcp")
+    configure_telemetry("ocr-mcp", "carrefour_ocr_mcp")
+    atexit.register(shutdown_telemetry)
     try:
         asyncio.run(_serve())
     except VisionConfigurationError as error:

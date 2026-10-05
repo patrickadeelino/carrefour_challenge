@@ -7,11 +7,13 @@ from time import monotonic
 from typing import cast
 
 import httpx
+from opentelemetry import trace
 
 VISION_ANNOTATE_URL = "https://vision.googleapis.com/v1/images:annotate"
 DOCUMENT_TEXT_DETECTION = "DOCUMENT_TEXT_DETECTION"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 class VisionClientError(Exception):
@@ -90,7 +92,23 @@ class GoogleCloudVisionClient:
             },
         )
         try:
-            annotation = await self._request_document_text(image)
+            with tracer.start_as_current_span(
+                "cloud_vision.document_text_detection",
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                span.set_attribute("server.address", "vision.googleapis.com")
+                try:
+                    annotation = await self._request_document_text(image)
+                except Exception as error:
+                    span.set_attribute(
+                        "error.code",
+                        getattr(error, "error_code", "vision_unexpected_failure"),
+                    )
+                    span.set_attribute("vision.outcome", "failed")
+                    span.set_status(trace.StatusCode.ERROR)
+                    raise
+                span.set_attribute("vision.outcome", "success")
         except Exception as error:
             logger.error(
                 "vision.request.failed",

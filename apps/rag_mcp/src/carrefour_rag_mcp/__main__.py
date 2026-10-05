@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import logging
 import os
 
 import uvicorn
-from carrefour_observability.logging_config import configure_json_logging
+from carrefour_observability.telemetry import (
+    configure_telemetry,
+    shutdown_telemetry,
+)
 
 from carrefour_rag_mcp.application import create_application
 from carrefour_rag_mcp.catalog.errors import CatalogLoadError
@@ -56,7 +60,8 @@ async def _serve() -> None:
 
 
 def main() -> None:
-    configure_json_logging("carrefour_rag_mcp", "rag-mcp")
+    configure_telemetry("rag-mcp", "carrefour_rag_mcp")
+    atexit.register(shutdown_telemetry)
     try:
         asyncio.run(_serve())
     except CatalogLoadError as error:

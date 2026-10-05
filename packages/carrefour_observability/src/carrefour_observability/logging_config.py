@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import ClassVar
+
+from opentelemetry import trace
 
 _request_id_context: ContextVar[str | None] = ContextVar(
     "carrefour_observability_request_id", default=None
@@ -36,6 +38,8 @@ class JsonEventFormatter(logging.Formatter):
         "outcome": str,
         "error_code": str,
         "error_type": str,
+        "trace_id": str,
+        "span_id": str,
     }
 
     def __init__(self, service_name: str) -> None:
@@ -60,6 +64,8 @@ class JsonEventFormatter(logging.Formatter):
             if field_name == "component":
                 continue
             value = getattr(record, field_name, None)
+            if field_name in {"trace_id", "span_id"}:
+                value = _current_trace_id(field_name)
             if field_name == "request_id" and not isinstance(value, str):
                 value = _request_id_context.get()
             if isinstance(value, field_type) and not isinstance(value, bool):
@@ -76,12 +82,35 @@ def configure_json_logging(logger_namespace: str, service_name: str) -> None:
     """Emite eventos JSON em stderr sem propagar conteúdo livre da mensagem."""
     logger = logging.getLogger(logger_namespace)
     for handler in tuple(logger.handlers):
-        if isinstance(handler.formatter, JsonEventFormatter):
+        if isinstance(handler.formatter, JsonEventFormatter) or getattr(
+            handler, "_carrefour_otel_log_handler", False
+        ):
             logger.removeHandler(handler)
             handler.close()
 
+    formatter = JsonEventFormatter(service_name)
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(JsonEventFormatter(service_name))
+    handler.setFormatter(formatter)
     logger.addHandler(handler)
+    telemetry_handler = _telemetry_log_handler(formatter)
+    if telemetry_handler is not None:
+        logger.addHandler(telemetry_handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False
+
+
+def _current_trace_id(field_name: str) -> str | None:
+    span_context = trace.get_current_span().get_span_context()
+    if not span_context.is_valid:
+        return None
+    if field_name == "trace_id":
+        return format(span_context.trace_id, "032x")
+    return format(span_context.span_id, "016x")
+
+
+def _telemetry_log_handler(
+    formatter: JsonEventFormatter,
+) -> logging.Handler | None:
+    from .telemetry import create_safe_log_handler
+
+    return create_safe_log_handler(formatter)

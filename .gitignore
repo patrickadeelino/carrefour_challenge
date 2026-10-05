@@ -1,4 +1,5 @@
 .env
+.env.observability
 .idea/
 .venv/
 __pycache__/

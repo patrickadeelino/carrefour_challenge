@@ -2,6 +2,7 @@ import json
 import logging
 
 import pytest
+
 from carrefour_observability.logging_config import (
     JsonEventFormatter,
     bind_request_id,
