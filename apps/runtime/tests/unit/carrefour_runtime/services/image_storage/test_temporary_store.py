@@ -7,7 +7,11 @@ from uuid import UUID
 import pytest
 from PIL import Image
 
-from carrefour_runtime.image_storage import ImageStorageError, TemporaryImageStore
+from carrefour_runtime.services.image_storage.temporary_store import (
+    ImageStorageError,
+    TemporaryImageStore,
+)
+from carrefour_runtime.value_objects.image_id import ImageId
 
 
 def image_bytes(image_format: str) -> bytes:
@@ -23,8 +27,8 @@ def test_store_accepts_supported_images_and_uses_uuid_filename(tmp_path, image_f
 
     image_id = store.store(content)
 
-    assert str(UUID(image_id)) == image_id
-    stored_file = tmp_path / image_id
+    assert str(UUID(str(image_id))) == str(image_id)
+    stored_file = tmp_path / str(image_id)
     assert stored_file.read_bytes() == content
     with Image.open(stored_file) as stored_image:
         assert stored_image.format == image_format
@@ -74,7 +78,10 @@ def test_failed_atomic_promotion_does_not_leave_partial_artifacts(
     def fail_replace(source: Path, destination: Path) -> None:
         raise OSError("simulated filesystem failure")
 
-    monkeypatch.setattr("carrefour_runtime.image_storage.os.replace", fail_replace)
+    monkeypatch.setattr(
+        "carrefour_runtime.services.image_storage.temporary_store.os.replace",
+        fail_replace,
+    )
 
     with pytest.raises(ImageStorageError, match="armazenar imagem"):
         store.store(image_bytes("PNG"))
@@ -87,7 +94,7 @@ def test_resolve_returns_only_the_file_referenced_by_a_valid_uuid(tmp_path):
     store = TemporaryImageStore(tmp_path)
     image_id = store.store(content)
 
-    assert store.resolve(image_id) == tmp_path / image_id
+    assert store.resolve(image_id) == tmp_path / str(image_id)
     assert store.resolve(image_id).read_bytes() == content
 
 
@@ -101,15 +108,9 @@ def test_delete_removes_an_image_by_its_internal_id(tmp_path):
 
 
 @pytest.mark.parametrize("invalid_id", ["../../outside", "not-a-uuid"])
-def test_storage_rejects_non_uuid_ids(tmp_path, invalid_id):
-    store = TemporaryImageStore(tmp_path)
-
-    with pytest.raises(ImageStorageError, match="image_id inválido"):
-        store.resolve(invalid_id)
-    with pytest.raises(ImageStorageError, match="image_id inválido"):
-        store.delete(invalid_id)
-
-    assert list(tmp_path.iterdir()) == []
+def test_image_id_rejects_noncanonical_uuid_values(invalid_id: str) -> None:
+    with pytest.raises(ValueError, match="UUID canônico"):
+        ImageId.parse(invalid_id)
 
 
 def test_cleanup_removes_only_uuid_images_older_than_30_minutes(tmp_path):
@@ -121,14 +122,14 @@ def test_cleanup_removes_only_uuid_images_older_than_30_minutes(tmp_path):
     now = datetime.now(UTC)
     old_time = (now - timedelta(minutes=31)).timestamp()
     recent_time = (now - timedelta(minutes=29)).timestamp()
-    os.utime(tmp_path / old_id, (old_time, old_time))
-    os.utime(tmp_path / recent_id, (recent_time, recent_time))
+    os.utime(tmp_path / str(old_id), (old_time, old_time))
+    os.utime(tmp_path / str(recent_id), (recent_time, recent_time))
 
     removed_count = store.cleanup_orphans(now=now)
 
     assert removed_count == 1
-    assert not (tmp_path / old_id).exists()
-    assert (tmp_path / recent_id).exists()
+    assert not (tmp_path / str(old_id)).exists()
+    assert (tmp_path / str(recent_id)).exists()
     assert unrelated_file.read_text(encoding="utf-8") == "keep"
 
 
@@ -150,4 +151,4 @@ def test_new_store_cleans_expired_orphans_before_saving(tmp_path):
     stored_id = store.store(image_bytes("JPEG"))
 
     assert not expired_file.exists()
-    assert (tmp_path / stored_id).is_file()
+    assert (tmp_path / str(stored_id)).is_file()

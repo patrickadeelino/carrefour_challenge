@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from google.adk.agents import Agent
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 SPECIFICATION_PATH = PROJECT_ROOT / "tests" / "fixtures" / "specification.json"
 
 

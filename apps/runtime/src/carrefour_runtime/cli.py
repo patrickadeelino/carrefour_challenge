@@ -1,17 +1,28 @@
 import argparse
+import asyncio
 import json
+import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from carrefour_observability.logging_config import configure_json_logging
 
-from .generation import generate_agent_source
-from .validation import (
-    format_validation_errors,
-    parse_specification,
-    validate_specification,
+from .services.generate.service import (
+    InvalidAgentSpecification,
+    generate_agent_file,
 )
+from .services.image_storage.temporary_store import (
+    ImageStorageError,
+    TemporaryImageStore,
+)
+from .services.process.errors import ProcessExecutionError
+from .services.process.service import OCRExecutor, ProcessService
+from .validation import validate_specification
+from .value_objects.exam_result import ExamResult
+
+logger = logging.getLogger(__name__)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -26,6 +37,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     generate_command.add_argument("specification", type=Path)
     generate_command.add_argument("--output", type=Path, required=True)
+    process_command = commands.add_parser(
+        "process", help="processa uma imagem de pedido de exames"
+    )
+    process_command.add_argument("--path", required=True, help="nome do arquivo")
     return parser
 
 
@@ -58,20 +73,13 @@ def _run_validation(specification_path: Path, specification: Any) -> int:
     return 0
 
 
-def _run_generation(
-    specification_path: Path, output_path: Path, specification: Any
-) -> int:
+def _run_generation(output_path: Path, specification: Any) -> int:
     try:
-        validated_specification = parse_specification(specification)
-    except ValidationError as error:
-        for message in format_validation_errors(error):
+        generate_agent_file(specification, output_path)
+    except InvalidAgentSpecification as error:
+        for message in error.messages:
             print(f"Erro de validação: {message}", file=sys.stderr)
         return 1
-
-    generated_source = generate_agent_source(validated_specification)
-    try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(generated_source, encoding="utf-8", newline="\n")
     except OSError as error:
         print(f"Erro ao gravar {output_path}: {error}", file=sys.stderr)
         return 1
@@ -80,8 +88,107 @@ def _run_generation(
     return 0
 
 
+def print_process_result(result: ExamResult) -> int:
+    print(json.dumps(result.to_dict(), ensure_ascii=False))
+    if result.requires_review:
+        return 2
+    return 0
+
+
+def _create_ocr_executor(generated_agent_path: Path) -> OCRExecutor:
+    from .services.process.adk_executor import AdkOcrExecutor
+
+    return AdkOcrExecutor(generated_agent_path)
+
+
+def _run_processing(filename: str) -> int:
+    generated_agent_path = Path(
+        os.environ.get("CARREFOUR_GENERATED_AGENT_PATH", "generated/agent.py")
+    )
+    if not generated_agent_path.is_file():
+        logger.error(
+            "process.configuration_failed",
+            extra={
+                "event_name": "process.configuration_failed",
+                "component": "cli",
+                "error_code": "generated_agent_missing",
+            },
+        )
+        print(
+            "Agente gerado ausente; execute generate antes de process.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not os.environ.get("GOOGLE_API_KEY", "").strip():
+        logger.error(
+            "process.configuration_failed",
+            extra={
+                "event_name": "process.configuration_failed",
+                "component": "cli",
+                "error_code": "runtime_api_key_missing",
+            },
+        )
+        print("GOOGLE_API_KEY não configurada.", file=sys.stderr)
+        return 1
+
+    image_directory = Path(
+        os.environ.get(
+            "CARREFOUR_INPUT_IMAGES_DIRECTORY",
+            "/workspace/tests/fixtures/images",
+        )
+    )
+    lock_path = Path(
+        os.environ.get(
+            "CARREFOUR_PROCESS_LOCK_PATH", "/tmp/carrefour-runtime/process.lock"
+        )
+    )
+
+    try:
+        service = ProcessService(
+            image_directory=image_directory,
+            image_store=TemporaryImageStore(),
+            executor=_create_ocr_executor(generated_agent_path),
+            lock_path=lock_path,
+        )
+        result = asyncio.run(service.process(filename))
+    except ProcessExecutionError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    except ImageStorageError:
+        logger.error(
+            "process.failed",
+            extra={
+                "event_name": "process.failed",
+                "component": "temporary_image_store",
+                "error_code": "image_storage_unavailable",
+                "error_type": "ImageStorageError",
+            },
+        )
+        print("não foi possível preparar o armazenamento temporário", file=sys.stderr)
+        return 1
+    except Exception as error:
+        logger.error(
+            "process.failed",
+            extra={
+                "event_name": "process.failed",
+                "component": "cli",
+                "error_code": "unexpected_runtime_failure",
+                "error_type": type(error).__name__,
+            },
+        )
+        print("falha técnica durante o processamento", file=sys.stderr)
+        return 1
+
+    return print_process_result(result)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+
+    if args.command == "process":
+        configure_json_logging("carrefour_runtime", "assistant-runtime")
+        return _run_processing(args.path)
 
     try:
         specification = _read_specification(args.specification)
@@ -92,4 +199,4 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         return _run_validation(args.specification, specification)
 
-    return _run_generation(args.specification, args.output, specification)
+    return _run_generation(args.output, specification)

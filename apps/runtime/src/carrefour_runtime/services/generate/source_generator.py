@@ -1,7 +1,7 @@
 from textwrap import dedent
 
-from .specification import Specification
-from .tool_registry import TOOL_REGISTRY_ORDER
+from carrefour_runtime.specification import Specification
+from carrefour_runtime.tool_registry import TOOL_REGISTRY_ORDER
 
 AGENT_INSTRUCTIONS = {
     "exam_scheduler": (

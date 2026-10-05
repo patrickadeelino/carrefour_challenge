@@ -9,9 +9,10 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID, uuid4
 
 from PIL import Image, UnidentifiedImageError
+
+from carrefour_runtime.value_objects.image_id import ImageId
 
 
 class ImageStorageError(ValueError):
@@ -21,9 +22,7 @@ class ImageStorageError(ValueError):
 class TemporaryImageStore:
     """Armazena PNG/JPG temporariamente e resolve arquivos por UUID interno."""
 
-    DEFAULT_ROOT = Path(
-        os.environ.get("CARREFOUR_IMAGE_STORAGE_PATH", "/var/run/carrefour/images")
-    )
+    DEFAULT_ROOT = Path("/var/run/carrefour/images")
     DEFAULT_MAX_IMAGE_SIZE_BYTES = 10_000_000
     DEFAULT_ORPHAN_TTL = timedelta(minutes=30)
     _SUPPORTED_FORMATS = frozenset({"PNG", "JPEG"})
@@ -39,7 +38,12 @@ class TemporaryImageStore:
         if orphan_ttl <= timedelta(0):
             raise ValueError("orphan_ttl deve ser positivo")
 
-        self.root = root or self.DEFAULT_ROOT
+        configured_root = os.environ.get("CARREFOUR_IMAGE_STORAGE_PATH")
+        self.root = (
+            root
+            if root is not None
+            else Path(configured_root or str(self.DEFAULT_ROOT))
+        )
         self.max_image_size_bytes = max_image_size_bytes
         self.orphan_ttl = orphan_ttl
         try:
@@ -49,12 +53,12 @@ class TemporaryImageStore:
                 "não foi possível preparar o armazenamento"
             ) from error
 
-    def store(self, image_bytes: bytes) -> str:
+    def store(self, image_bytes: bytes) -> ImageId:
         """Valida e grava os bytes sob um UUID, promovendo o arquivo atomicamente."""
         self._validate_image(image_bytes)
         self.cleanup_orphans()
-        image_id = str(uuid4())
-        destination = self.root / image_id
+        image_id = ImageId.new()
+        destination = self.root / str(image_id)
         temporary_path: Path | None = None
 
         try:
@@ -74,14 +78,14 @@ class TemporaryImageStore:
 
         return image_id
 
-    def resolve(self, image_id: str) -> Path:
+    def resolve(self, image_id: ImageId) -> Path:
         """Resolve um UUID canônico para um arquivo existente no diretório permitido."""
         image_path = self._path_for(image_id)
         if not image_path.is_file() or image_path.is_symlink():
             raise ImageStorageError("imagem não encontrada")
         return image_path
 
-    def delete(self, image_id: str) -> bool:
+    def delete(self, image_id: ImageId) -> bool:
         """Apaga uma imagem pelo UUID; retorna False se ela já não existir."""
         image_path = self._path_for(image_id)
         try:
@@ -114,7 +118,7 @@ class TemporaryImageStore:
         )
 
     def _remove_if_expired(self, candidate: Path, expiration_timestamp: float) -> int:
-        if candidate.is_symlink() or not self._has_canonical_uuid_name(candidate.name):
+        if candidate.is_symlink() or not _is_canonical_uuid(candidate.name):
             return 0
 
         try:
@@ -147,14 +151,13 @@ class TemporaryImageStore:
         if image_format not in self._SUPPORTED_FORMATS:
             raise ImageStorageError("formato não suportado; use PNG e JPG")
 
-    def _path_for(self, image_id: str) -> Path:
-        if not self._has_canonical_uuid_name(image_id):
-            raise ImageStorageError("image_id inválido")
-        return self.root / image_id
+    def _path_for(self, image_id: ImageId) -> Path:
+        return self.root / str(image_id)
 
-    @staticmethod
-    def _has_canonical_uuid_name(value: str) -> bool:
-        try:
-            return str(UUID(value)) == value
-        except (AttributeError, ValueError):
-            return False
+
+def _is_canonical_uuid(value: str) -> bool:
+    try:
+        ImageId.parse(value)
+    except ValueError:
+        return False
+    return True
