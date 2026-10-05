@@ -22,7 +22,7 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 - [x] Definir a política de concorrência: somente um processamento pode estar ativo por vez; a subfase 2.1 implementou e testou o lock entre processos.
 - [x] Definir que credenciais ficam fora da imagem Docker e do Git; a subfase 2.1 configurou a injeção em tempo de execução a partir do `.env` ignorado pelo Git.
 - [x] Registrar as regras de validação de PNG/JPG, limite de 10 MB, uso do UUID interno e limpeza em sucesso ou falha.
-- [x] Registrar o limite de privacidade: o agente recebe o `image_id`, o servidor OCR mascara PII e a imagem bruta não entra no contexto do LLM.
+- [x] Registrar o limite de privacidade: o agente recebe o `image_id`, o servidor OCR verifica os valores de saída com uma barreira local de PII e a imagem bruta não entra no contexto do LLM. O detector reduz risco, sem garantir cobertura universal.
 - [x] Definir a composição do agente gerado nesta fatia: tools controladas de stub para catálogo e agendamento, sem chamadas externas; instruções limitadas ao OCR.
 - [x] Implementar o componente reutilizável `TemporaryImageStore`, com validação, gravação atômica, resolução por UUID, exclusão e limpeza de órfãos; os testes unitários do componente estão presentes.
 - [x] Configurar a base de desenvolvimento em Docker: dependências `dev`, workspace montado em `/workspace`, runtime não root e volume `tmpfs`; `docker compose config` foi validado.
@@ -109,6 +109,24 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 **Nota de custo da validação:** a primeira tentativa em cada fixture usou uma imagem Docker desatualizada e chegou a chamar o Vision antes de falhar em uma asserção obsoleta do teste. Após reconstruir o runtime, as duas execuções passaram. As quatro tentativas desta sequência fizeram quatro chamadas ao Vision; esse número se refere a estes comandos, não ao histórico completo do container. Não repetir essas execuções sem necessidade.
 
+### 2.1.1 — Barreira local de PII no OCR
+
+**Objetivo:** reduzir a chance de nomes, documentos ou contatos identificados como exames serem devolvidos pela tool e chegarem ao agente ou ao RAG.
+
+- [x] Inicializar Presidio dentro do container OCR com spaCy local em português; a falha de inicialização encerra o serviço com evento e mensagem sanitizados.
+- [x] Analisar todos os valores que poderiam sair em `exams` e `ambiguous_exams`, sem enviar o texto OCR a um serviço de detecção externo.
+- [x] Configurar recognizers locais para nomes, e-mail, telefone brasileiro, CPF, CNPJ numérico e alfanumérico, RG e CNS.
+- [x] Ao detectar PII, suprimir todo o resultado e retornar somente `{"status":"review_required","reason":"sensitive_data_detected"}`; não expor exames não sinalizados nem mascarar trechos.
+- [x] Se a análise falhar, interromper a tool com erro técnico sanitizado; não liberar o resultado original.
+- [x] Cobrir categorias com dados sintéticos, regressões das duas fixtures e a fronteira MCP/runtime; nenhuma suíte chama Vision, Gemini ou Sensitive Data Protection.
+- [x] Atualizar especificação, system design e notas para o vídeo para descrever a implementação e seus limites.
+
+**Limite da evidência:** os testes cobrem as categorias e exemplos sintéticos listados. Presidio, spaCy e recognizers próprios reduzem o risco, mas não garantem detecção completa de PII em texto OCR imperfeito ou formatos não previstos. Sensitive Data Protection continua sendo alternativa futura; não é chamado nesta etapa.
+
+**Regra conservadora para documentos:** CPF e CNPJ são detectados pelo formato, mesmo quando o checksum não confere. Um erro de leitura OCR pode alterar um dígito válido; exigir checksum permitiria que um identificador real passasse sem bloqueio. O custo possível é revisão extra para strings numéricas que apenas se parecem com documentos.
+
+**Resultado:** o detector local foi inicializado e os testes unitários cobriram os identificadores brasileiros configurados, e-mail, telefone e nomes em português. Os dois layouts de referência passam sem falso positivo. A resposta MCP e o CLI preservam somente o estado genérico de revisão quando um valor é sinalizado.
+
 ### POC concluída: extração de exames nos dois layouts sintéticos
 
 **Objetivo da validação:** conferir se um fluxo com Cloud Vision OCR e análise local consegue retornar os exames corretos em duas imagens de demonstração: uma lista numerada sem caixas de seleção e um formulário com checkboxes.
@@ -125,15 +143,43 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 **Ordem de implementação acordada:** a recepção e o armazenamento temporário local precederam o servidor/tool de OCR. Essa ordem foi seguida: `TemporaryImageStore` recebe a cópia em `tmpfs` sob UUID e `process` envia somente esse ID ao servidor OCR. O fluxo está implementado e foi validado na subfase 2.1; veja a seção “Recepção e armazenamento temporário de imagem”.
 
-### 2.2 — Catálogo de exames e busca
+### 2.2 — Catálogo de exames e busca (RAG via MCP)
 
-- [ ] Confirmar fonte, formato e volume do catálogo exigido.
-- [ ] Preparar e validar os dados do catálogo.
-- [ ] Implementar busca e critérios de avaliação dos resultados.
-- [ ] Expor a capacidade pela interface definida na subfase 2.0.
-- [ ] Testar sem depender de um modelo externo.
+**Objetivo:** receber em lote os nomes de exames retornados pelo OCR, resolver cada nome no catálogo fictício e devolver códigos somente quando a correspondência for confiável. A capacidade será exposta ao agente por um servidor MCP usando SSE; esta subfase não depende da API de agendamento.
 
-**Entrega candidata:** busca de exames disponível ao agente por uma interface documentada.
+#### Etapa 1 — Especificar catálogo e contrato da tool
+
+- [ ] Definir o JSON como fonte versionada do catálogo, com pelo menos 100 exames fictícios, código único, nome canônico e aliases aprovados.
+- [ ] Definir a validação na inicialização: estrutura, campos obrigatórios, códigos únicos e aliases; permitir que um alias compartilhado aponte para vários exames para que a busca possa sinalizar ambiguidade.
+- [ ] Definir o contrato de busca em lote: uma chamada recebe uma lista de nomes e retorna um resultado por nome distinto, com estados `resolved`, `ambiguous` ou `not_found`.
+- [ ] Definir a deduplicação de nomes de entrada após normalização, preservando a ordem da primeira ocorrência.
+- [ ] Definir que respostas resolvidas incluem código e nome canônico; respostas ambíguas incluem candidatos sem escolher um deles; respostas não encontradas não inventam códigos.
+
+#### Etapa 2 — Construir índice e recuperação
+
+- [ ] Normalizar nome canônico, aliases e consultas com regras idênticas para caixa, acentos, pontuação e espaços.
+- [ ] Construir na inicialização um índice em memória no qual cada termo normalizado aponta para um ou mais exames.
+- [ ] Implementar busca exata primeiro, cobrindo nomes canônicos e aliases; se o termo exato apontar para múltiplos exames, retornar `ambiguous`.
+- [ ] Quando não houver correspondência exata, usar RapidFuzz para comparar a consulta com os termos do índice e ordenar candidatos por similaridade.
+- [ ] Manter a busca aproximada como geração de candidatos; definir os limites para resolução automática somente após avaliação rotulada. Candidatos próximos ou sem evidência suficiente exigem revisão ou retornam `not_found`, conforme o contrato aprovado.
+- [ ] Retornar o método de correspondência e os candidatos necessários para explicar a decisão, sem registrar nomes de exames em logs operacionais.
+
+#### Etapa 3 — Avaliar a recuperação
+
+- [ ] Montar casos de referência a partir dos exames identificados nas duas imagens de teste e associar cada consulta ao código esperado.
+- [ ] Avaliar a recuperação separadamente do OCR para distinguir erros de extração de erros de catálogo.
+- [ ] Cobrir correspondência exata, alias, erro ortográfico, alias compartilhado/ambiguidade e exame ausente; incluir variações sintéticas de grafia para medir o comportamento aproximado.
+- [ ] Medir acertos, falsos positivos, ambiguidades e abstenções; calibrar limites sem presumir que uma pontuação de similaridade seja uma probabilidade de acerto.
+- [ ] Executar testes sem depender de LLM, Cloud Vision ou API de agendamento.
+
+#### Etapa 4 — Expor e documentar o MCP RAG
+
+- [ ] Implementar o servidor MCP como app independente e expor a busca pelo transporte SSE exigido pelo desafio.
+- [ ] Testar descoberta e chamada da tool pelo transporte SSE, incluindo resultados resolvidos, ambíguos, não encontrados e falhas de entrada/catálogo.
+- [ ] Adicionar o serviço ao Docker Compose sem publicar desnecessariamente sua porta no host.
+- [ ] Documentar o formato do catálogo, contrato de entrada e saída, estratégia de recuperação, avaliação e comandos para iniciar e verificar o servidor.
+
+**Entrega candidata:** catálogo fictício validado e busca em lote disponível por MCP SSE, com correspondência exata e aproximada avaliadas e resultados que não escolhem códigos de forma ambígua.
 
 ### 2.3 — API de agendamento
 
@@ -146,7 +192,7 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 ### 2.4 — Verificação transversal de privacidade
 
-> A anonimização dos dados extraídos acontece dentro do MCP de OCR, na subfase 2.1. Esta etapa verifica que os outros componentes respeitam esse limite e não reintroduzem exposição ou persistência de PII.
+> A barreira local do OCR, entregue na subfase 2.1.1, suprime o resultado quando reconhece uma das categorias configuradas. Esta etapa verifica que os outros componentes respeitam esse limite e não reintroduzem exposição ou persistência desnecessária de PII; ela não presume que o detector reconheça toda PII.
 
 - [ ] Revisar logs e mensagens de erro dos serviços para evitar exposição de dados pessoais.
 - [ ] Confirmar que armazenamento, API e agente não persistem nem propagam PII desnecessária.
@@ -243,13 +289,13 @@ Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`.
 
 **Validação técnica:** a analogia com armazenamento de objetos (como S3 ou Cloud Storage) é válida, mas gerar um ID sozinho não faz upload nem concede acesso ao arquivo. Um componente de entrada precisa receber a imagem, registrá-la sob uma referência opaca e permitir que o serviço de OCR a recupere com autorização. O ID é uma referência, não uma credencial de autorização.
 
-**Decisão aprovada para este desafio:** manter o modelo todo local e conteinerizado, sem GCS/S3, usando um volume compartilhado em `tmpfs`. O runtime/CLI registra a imagem no volume com um nome UUID vinculado à solicitação ativa. O agente chama a tool MCP de OCR via SSE com esse ID. O OCR valida o UUID e abre diretamente o arquivo correspondente no diretório permitido; não varre o diretório nem aceita caminhos ou URLs arbitrários fornecidos pelo modelo. O OCR mascara PII e retorna `{"exams": ["..."]}`.
+**Decisão aprovada para este desafio:** manter o modelo todo local e conteinerizado, sem GCS/S3, usando um volume compartilhado em `tmpfs`. O runtime/CLI registra a imagem no volume com um nome UUID vinculado à solicitação ativa. O agente chama a tool MCP de OCR via SSE com esse ID. O OCR valida o UUID e abre diretamente o arquivo correspondente no diretório permitido; não varre o diretório nem aceita caminhos ou URLs arbitrários fornecidos pelo modelo. Uma barreira local verifica os nomes de exames que sairiam da tool; quando reconhece PII, suprime toda a lista e retorna apenas um status genérico de revisão. Essa detecção não é uma garantia de anonimização completa.
 
 **Decisão aprovada sobre o mapeamento:** não haverá `map.json` nesta etapa. O UUID é o nome do arquivo e permite resolução direta. O runtime/CLI remove a imagem ao final do fluxo, inclusive em caso de erro (`finally`); uma gravação também remove arquivos órfãos com mais de 30 minutos.
 
 **Controles de acesso implementados:** runtime/CLI com escrita no volume e servidor OCR com montagem somente leitura. Um lock entre processos impede atendimentos simultâneos; a rotina de limpeza remove arquivos órfãos com mais de 30 minutos.
 
-**Motivo da decisão:** a imagem do pedido pode conter PII. Mantê-la no armazenamento temporário e passar ao agente apenas um `image_id` evita que os bytes da imagem entrem no contexto do modelo. O agente ainda chama a tool OCR; o OCR acessa a imagem, mascara os dados pessoais e devolve somente a lista de exames. Essa fronteira reduz a exposição de PII ao modelo sem retirar do agente a orquestração da tool.
+**Motivo da decisão:** a imagem do pedido pode conter PII. Mantê-la no armazenamento temporário e passar ao agente apenas um `image_id` evita que os bytes da imagem entrem no contexto do modelo. O agente ainda chama a tool OCR; o OCR acessa a imagem, verifica localmente os valores extraídos e devolve a lista somente quando não reconhece PII nas categorias configuradas. Se reconhecer, suprime a lista inteira. Essa fronteira reduz a exposição, sem prometer detecção completa.
 
 O desenho também evita introduzir GCS e credenciais cloud num desafio que exige a solução conteinerizada com Docker Compose. Se futuramente o runtime estiver no GCP, o mesmo contrato pode apontar para um objeto privado no Cloud Storage; o serviço de entrada controla o upload e o OCR acessa o objeto por identidade de serviço ou autorização temporária. Uma URL assinada não deve ser tratada como um ID comum: quem a possui pode usá-la enquanto válida.
 
@@ -266,7 +312,7 @@ O desenho também evita introduzir GCS e credenciais cloud num desafio que exige
 - Para chamadas síncronas de OCR, o Google documenta que a imagem é processada em memória e não persistida em disco. Também declara que o conteúdo é usado para prestar o serviço, não para treinar ou melhorar o Vision.
 - Essas garantias documentadas oferecem uma base clara para a decisão de arquitetura deste desafio.
 
-**Limite de confiança e tratamento de dados:** a imagem continua sendo enviada ao Google Cloud Vision para processamento; portanto, `tmpfs` reduz a retenção local, mas não significa que os bytes permaneçam apenas nos containers. O fluxo escolhido usará a operação síncrona de anotação de imagem. A documentação informa que certos metadados da solicitação, como horário e tamanho, podem ser registrados temporariamente. A saída para o agente seguirá limitada aos exames extraídos, após o mascaramento de PII no MCP de OCR.
+**Limite de confiança e tratamento de dados:** a imagem continua sendo enviada ao Google Cloud Vision para processamento; portanto, `tmpfs` reduz a retenção local, mas não significa que os bytes permaneçam apenas nos containers. O fluxo escolhido usará a operação síncrona de anotação de imagem. A documentação informa que certos metadados da solicitação, como horário e tamanho, podem ser registrados temporariamente. Antes de enviar valores ao agente, o MCP de OCR verifica as categorias de PII configuradas e suprime o resultado completo quando detecta uma delas. A detecção não garante cobertura universal.
 
 **Entrada de imagem aprovada:** PNG e JPG, com tamanho máximo inicial de 10 MB. O CLI valida o tamanho e o formato real do arquivo antes de armazená-lo; o OCR verifica se consegue abrir e processar a imagem. Arquivos PDF e outros formatos ficam fora deste escopo inicial.
 

@@ -25,7 +25,7 @@ O Docker Compose inicia o runtime e o servidor OCR em containers independentes. 
 - [PRD da Fase 1](docs/PRD.md): objetivo, escopo e critérios de conclusão.
 - [Plano da Fase 1](docs/phase1-plan.md): etapas acordadas e entregas concluídas.
 - [Especificação técnica da Fase 1](docs/phase1-spec.md): formato do JSON, validações, tools e geração determinística.
-- [System design da Fase 1](docs/system-design.md): componentes, fluxo e fronteiras de confiança.
+- [System Design — arquitetura dos containers](docs/system-design.md): containers, integrações e fronteiras de confiança.
 - [Plano da Fase 2](docs/phase2-plan.md): decisões e checklist das próximas subfases.
 - [Workflow de desenvolvimento](docs/playbooks/development-workflow.md): ciclo de mudança, revisão, validação e transparência no uso de IA.
 - [Playbook de logging](docs/playbooks/logging.md): eventos estruturados, 5 Ws e política de privacidade.

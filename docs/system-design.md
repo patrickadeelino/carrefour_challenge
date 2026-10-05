@@ -1,66 +1,78 @@
-# System design — fase 1
+# System Design
 
-## Objetivo e limite
+## Objetivo e escopo
 
-A fase 1 converte uma especificação JSON validada em uma factory Python determinística. A factory aceita as implementações de tools fornecidas pela aplicação que a chama e instancia um agente Google ADK. A aplicação que compõe essas implementações e executa o agente em produção será detalhada em uma etapa posterior.
+Este documento apresenta a arquitetura atual em alto nível: containers, integrações, armazenamento compartilhado e fronteiras de confiança. O diagrama representa componentes e suas conexões; não descreve a sequência de execução dos comandos.
 
-Este documento mostra somente o caminho de produção definido para a fase 1. O teste com `InMemoryRunner` e modelo simulado não faz parte do desenho de produção.
+Os contratos e passos detalhados ficam nas especificações da [Fase 1](phase1-spec.md) e da [Fase 2](phase2-spec.md). RAG e agendamento ainda não foram especificados e, por isso, não aparecem nesta arquitetura.
 
 ## Requisitos
 
 ### Funcionais
 
-- Ler e validar a especificação do agente pelo CLI antes da geração.
-- Rejeitar campos desconhecidos, valores não permitidos, IDs de tool inválidos, duplicados ou ausentes.
-- Gerar Python determinístico que exponha `create_agent(registered_tools)`.
-- Exigir que o consumidor forneça exatamente as implementações aprovadas declaradas na especificação antes de instanciar o agente ADK.
+- Validar `specification.json` e gerar deterministicamente a factory Python do agente.
+- Receber uma imagem pelo comando `process`, acionar a extração OCR e apresentar exames ou uma resposta explícita que solicite revisão manual.
+- Reconhecer os dois layouts de referência usando Cloud Vision e classificação local, sem depender de um LLM para selecionar exames.
 
 ### Não funcionais
 
-- Não aceitar código, instruções livres, credenciais ou endereços de MCP no JSON.
-- Reproduzir os mesmos bytes de Python para a mesma especificação válida, independentemente da ordem das chaves e das tools na entrada.
-- Ser compatível com Python 3.11 ou superior e Google ADK.
-- Falhar com caminho do campo e mensagem acionável para especificações inválidas.
+- Reduzir a exposição de dados pessoais: imagem e texto OCR integral não entram no contexto do modelo; uma barreira local analisa os valores de saída do OCR e suprime todo o resultado quando identifica PII configurada; logs não expõem conteúdo clínico ou identificadores.
+- Isolar responsabilidades em containers independentes, conectados pela rede interna do Compose; montar o armazenamento temporário com escrita no runtime e somente leitura no OCR.
+- Remover a cópia temporária ao fim do processamento, permitir um processamento por vez e injetar credenciais somente em runtime.
+- Manter a interface do CLI previsível: resultado funcional em JSON no `stdout` e logs/falhas sanitizadas no `stderr`.
 
-O contrato detalhado dos campos, allowlists e tools fica em [phase1-spec.md](phase1-spec.md).
+Os critérios detalhados de validação, erros, formatos e respostas estão nas especificações das fases correspondentes.
 
-## Componentes e responsabilidades
-
-| Componente | Responsabilidade |
-|---|---|
-| `specification.json` | Declarar nome, tipo, modelo e IDs de tools, sem código ou endpoints. |
-| CLI | Ler o arquivo e expor os fluxos `validate` e `generate`. |
-| Validador Pydantic | Aplicar tipos estritos, campos permitidos e regras do agente. |
-| Gerador determinístico | Converter a configuração validada em uma factory Python. |
-| Factory gerada | Conferir a correspondência exata dos IDs recebidos e criar o objeto `Agent`. |
-| Aplicação consumidora | Fornecer o mapa de IDs para funções/adaptadores aprovados; sua implementação está fora desta fase. |
-| Google ADK | Construir o agente configurado pela factory. |
-
-## Fluxo de geração
+## Containers e integrações
 
 ```mermaid
-flowchart TB
-    Spec["specification.json"] --> Validator["Validador Pydantic<br/>estrutura e tools declaradas"]
-    Validator -->|Inválida| ValidationError["Erro de validação<br/>agent.py não é gerado"]
-    Validator -->|Válida| Generator["Gerador determinístico"]
-    Generator --> Artifact["agent.py gerado<br/>contém create_agent"]
+flowchart LR
+    subgraph Host["Host"]
+        Operator["Operador"]
+        Workspace["Workspace<br/>specification.json · imagens · generated/"]
+    end
+
+    subgraph Compose["Docker Compose · rede interna"]
+        Runtime["assistant-runtime<br/>CLI · agente gerado · Google ADK"]
+        TempStore[("image-storage<br/>tmpfs · 64 MiB")]
+        OCR["ocr-mcp<br/>servidor MCP · extractors locais"]
+    end
+
+    subgraph External["Serviços externos"]
+        Model["API do modelo configurado"]
+        Vision["Google Cloud Vision<br/>DOCUMENT_TEXT_DETECTION"]
+    end
+
+    Operator -->|"docker compose exec"| Runtime
+    Workspace <-->|"bind mount"| Runtime
+    Runtime <-->|"API do modelo"| Model
+    Runtime <-->|"MCP via SSE<br/>extract_exams(image_id)"| OCR
+    Runtime -->|"escrita e limpeza"| TempStore
+    TempStore -->|"leitura somente"| OCR
+    OCR <-->|"HTTPS · imagem e resposta OCR"| Vision
 ```
 
-O diagrama mostra a geração: o validador confere a estrutura e as tools declaradas no JSON antes de permitir que o gerador escreva `agent.py`. O arquivo gerado define `create_agent`; o comando `generate` não chama essa função nem instancia um Agent.
+## Responsabilidades
 
-## Fronteiras de confiança e falhas
+| Elemento | Responsabilidade e interface |
+|---|---|
+| `assistant-runtime` | Executar `validate`, `generate` e `process`; carregar a factory gerada, orquestrar o agente ADK e produzir o resultado JSON no CLI. |
+| `ocr-mcp` | Expor `extract_exams(image_id)` por SSE, ler a imagem temporária, chamar o Cloud Vision, classificar localmente os dois layouts de referência e aplicar a barreira local de PII antes de responder. |
+| `image-storage` | Volume `tmpfs` temporário compartilhado; o runtime grava e remove arquivos, enquanto o OCR tem acesso somente de leitura. |
+| API do modelo | Apoiar o agente na execução da tool aprovada; recebe o identificador interno e os metadados necessários ao agente, nunca a imagem ou o texto OCR integral. |
+| Google Cloud Vision | Reconhecer texto e posições na imagem enviada pelo OCR por `DOCUMENT_TEXT_DETECTION`. |
+| Docker Compose | Construir os apps separadamente, conectá-los pela rede interna e montar o volume temporário com permissões distintas. |
 
-- A especificação controla somente campos enumerados e IDs de tools registrados; não pode introduzir código executável, instruções livres, segredos ou endpoints.
-- O mapa de implementações é fornecido pelo consumidor confiável, não pelo JSON.
-- Erros de leitura, JSON inválido ou falha de validação interrompem o CLI sem gravar saída gerada.
-- Uma divergência entre IDs declarados e registrados interrompe a factory antes de criar o agente.
+## Fronteiras de confiança e operação
 
-## Estrutura executável atual — base da Fase 2
+- `process` aceita somente um nome de arquivo no diretório de entrada permitido. O agente envia um UUID canônico à tool; não escolhe caminhos, URLs, credenciais ou endpoints.
+- A cópia temporária fica em `tmpfs`; o runtime tem escrita e o OCR, somente leitura. O runtime permite um processamento ativo por vez e remove a cópia ao terminar.
+- A imagem é enviada ao Google Cloud Vision para OCR. O uso de `tmpfs` reduz a retenção local, mas não significa que a imagem permaneça apenas nos containers; a decisão e as garantias do fornecedor estão registradas no [plano da Fase 2](phase2-plan.md).
+- A API do modelo e o Cloud Vision são serviços externos separados. As credenciais são injetadas em execução apenas no container que as utiliza e não são copiadas para as imagens Docker nem versionadas.
+- O OCR analisa localmente os valores de `exams` e `ambiguous_exams` com Presidio, spaCy em português e recognizers brasileiros configurados. Ao sinalizar PII, devolve somente um status genérico de revisão; se a análise falhar, não libera o resultado. O detector reduz risco e não garante identificar toda PII.
+- Logs operacionais não incluem imagem, nome ou caminho do arquivo, UUID, dados pessoais, nomes de exames, texto OCR, prompts ou credenciais.
+- O servidor OCR não publica uma porta no host; o runtime o acessa pela rede do Compose. A saída funcional do CLI é JSON em `stdout`; logs e falhas sanitizadas usam `stderr`.
 
-O runtime é um app Python independente em `apps/runtime/`, com código em `src/carrefour_runtime/`, dependências e lockfile próprios, Dockerfile, README e testes. Ele contém o CLI de transpiler da Fase 1 e o armazenamento temporário já implementado. A raiz do repositório mantém o Compose, a documentação do desafio, o exemplo de especificação e os materiais sintéticos da POC.
+## Limites atuais
 
-O serviço Compose `assistant-runtime` constrói a imagem usando somente `apps/runtime/` como contexto. Em execução, a raiz do repositório é montada em `/workspace` para ler entradas e gravar artefatos. O MCP de OCR ainda não foi criado; quando for implementado, será outro app Python independente e se comunicará com o runtime pelo contrato MCP acordado.
-
-## Fora do escopo desta versão
-
-A aplicação de produção, chamadas a um modelo real, implementações MCP, API de agendamento, tratamento da imagem e anonimização de PII serão desenhados quando suas fases forem planejadas.
+A extração cobre os dois layouts de referência validados: lista numerada sem caixas e formulário com marcações X. Isso não representa suporte geral a documentos médicos ou manuscritos. Novos componentes e fluxos serão incluídos quando suas subfases forem especificadas.
