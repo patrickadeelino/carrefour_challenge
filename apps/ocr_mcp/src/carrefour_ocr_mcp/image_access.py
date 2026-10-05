@@ -1,12 +1,10 @@
 from pathlib import Path
 
-from mcp.server.mcpserver.exceptions import ToolError
-
 from carrefour_ocr_mcp.value_objects.image_id import ImageId
 
 
-class ImageAccessError(ToolError):
-    """Sanitized tool error with a stable operational classification."""
+class ImageAccessError(ValueError):
+    """Image lookup failure with a stable operational classification."""
 
     component = "image_access"
 

@@ -1,13 +1,17 @@
 import json
+import os
+import subprocess
+import sys
+import textwrap
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 from mcp import Client
 
-from carrefour_ocr_mcp.contracts import ExamResult
+from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
 from carrefour_ocr_mcp.server import create_server
 from carrefour_ocr_mcp.services.exam_extractor.vision_exam_extractor import (
     VisionExamExtractor,
@@ -15,11 +19,11 @@ from carrefour_ocr_mcp.services.exam_extractor.vision_exam_extractor import (
 
 
 class FakeOcrProcessor:
-    def __init__(self, result: ExamResult) -> None:
+    def __init__(self, result: ExamExtractionCandidate) -> None:
         self.result = result
         self.received_image: bytes | None = None
 
-    async def extract_exams(self, image: bytes) -> ExamResult:
+    async def extract_exams(self, image: bytes) -> ExamExtractionCandidate:
         self.received_image = image
         return self.result
 
@@ -263,21 +267,25 @@ async def test_extract_exams_logs_sanitized_unexpected_failure(
     (tmp_path / image_id).write_bytes(b"synthetic image bytes")
 
     class FailingProcessor:
-        async def extract_exams(self, image: bytes) -> ExamResult:
+        async def extract_exams(self, image: bytes) -> ExamExtractionCandidate:
             del image
-            raise RuntimeError("synthetic private OCR payload")
+            error = RuntimeError("synthetic private OCR payload")
+            error.error_code = "SYNTHETIC_PRIVATE_ERROR_CODE"
+            error.component = "SYNTHETIC_PRIVATE_COMPONENT"
+            raise error
 
     server = create_server(
         image_directory=tmp_path,
         ocr_processor=FailingProcessor(),
         pii_guard=pii_output_guard,
     )
-
     with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
         async with Client(server) as client:
             result = await client.call_tool("extract_exams", {"image_id": image_id})
 
     assert result.is_error
+    assert result.structured_content is None
+    assert "synthetic private OCR payload" not in result.content[0].text
     record = json.loads(log_stream.getvalue().splitlines()[-1])
     assert record["event"] == "ocr.tool.failed"
     assert record["level"] == "ERROR"
@@ -286,6 +294,115 @@ async def test_extract_exams_logs_sanitized_unexpected_failure(
     assert record["error_type"] == "RuntimeError"
     assert image_id not in log_stream.getvalue()
     assert "synthetic private OCR payload" not in log_stream.getvalue()
+    assert "SYNTHETIC_PRIVATE_ERROR_CODE" not in log_stream.getvalue()
+    assert "SYNTHETIC_PRIVATE_COMPONENT" not in log_stream.getvalue()
+
+
+@pytest.mark.anyio
+async def test_extract_exams_does_not_return_extra_fields_from_extractor(
+    tmp_path: Path,
+    pii_output_guard,
+    json_log_capture,
+) -> None:
+    image_id = str(uuid4())
+    (tmp_path / image_id).write_bytes(b"synthetic image bytes")
+    sensitive_value = "SYNTHETIC_PRIVATE_PATIENT"
+    processor = FakeOcrProcessor(
+        cast(
+            ExamExtractionCandidate,
+            {"exams": ["Hemograma completo"], "patient": sensitive_value},
+        )
+    )
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=pii_output_guard,
+    )
+    with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
+        async with Client(server) as client:
+            result = await client.call_tool("extract_exams", {"image_id": image_id})
+
+    assert result.is_error
+    assert result.structured_content is None
+    assert sensitive_value not in result.content[0].text
+    assert sensitive_value not in log_stream.getvalue()
+    records = [json.loads(line) for line in log_stream.getvalue().splitlines()]
+    record = records[-1]
+    assert record["event"] == "ocr.tool.failed"
+    assert record["component"] == "pii_guard"
+    assert record["error_code"] == "invalid_ocr_result"
+    assert "SYNTHETIC_PRIVATE_ERROR_CODE" not in log_stream.getvalue()
+    assert "SYNTHETIC_PRIVATE_COMPONENT" not in log_stream.getvalue()
+
+
+def test_process_stderr_does_not_leak_unexpected_tool_exception(
+    tmp_path: Path,
+) -> None:
+    app_root = Path(__file__).resolve().parents[3]
+    private_marker = "SYNTHETIC_PRIVATE_OCR_EXCEPTION"
+    script = textwrap.dedent(
+        """
+        import anyio
+        import sys
+        from pathlib import Path
+        from uuid import uuid4
+
+        from mcp import Client
+        from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
+        from carrefour_ocr_mcp.server import create_server
+        from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
+
+        class NoPiiAnalyzer:
+            def contains_pii(self, text: str) -> bool:
+                del text
+                return False
+
+        class FailingProcessor:
+            async def extract_exams(self, image: bytes) -> ExamExtractionCandidate:
+                del image
+                error = RuntimeError("SYNTHETIC_PRIVATE_OCR_EXCEPTION")
+                error.error_code = "SYNTHETIC_PRIVATE_ERROR_CODE"
+                error.component = "SYNTHETIC_PRIVATE_COMPONENT"
+                raise error
+
+        async def main() -> None:
+            directory = Path(sys.argv[1])
+            image_id = str(uuid4())
+            (directory / image_id).write_bytes(b"synthetic image bytes")
+            server = create_server(
+                image_directory=directory,
+                ocr_processor=FailingProcessor(),
+                pii_guard=PiiOutputGuard(NoPiiAnalyzer()),
+            )
+            async with Client(server) as client:
+                result = await client.call_tool("extract_exams", {"image_id": image_id})
+            print(f"RESULT_IS_ERROR={result.is_error}")
+
+        anyio.run(main)
+        """
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(app_root / "src"), environment.get("PYTHONPATH", "")])
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)],
+        capture_output=True,
+        check=False,
+        cwd=app_root,
+        env=environment,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "RESULT_IS_ERROR=True"
+    assert private_marker not in result.stdout
+    assert private_marker not in result.stderr
+    assert "SYNTHETIC_PRIVATE_ERROR_CODE" not in result.stderr
+    assert "SYNTHETIC_PRIVATE_COMPONENT" not in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 @pytest.mark.anyio
@@ -305,9 +422,7 @@ async def test_extract_exams_suppresses_all_names_when_pii_is_found(
     image_id = str(uuid4())
     (tmp_path / image_id).write_bytes(b"synthetic image bytes")
     sensitive_value = "CPF 529.982.247-25"
-    processor = FakeOcrProcessor(
-        {"exams": ["Hemograma completo", sensitive_value]}
-    )
+    processor = FakeOcrProcessor({"exams": ["Hemograma completo", sensitive_value]})
     server = create_server(
         image_directory=tmp_path,
         ocr_processor=processor,

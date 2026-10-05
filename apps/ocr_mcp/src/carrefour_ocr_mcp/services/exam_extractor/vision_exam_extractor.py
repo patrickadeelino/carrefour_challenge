@@ -4,7 +4,7 @@ import logging
 from time import monotonic
 from typing import Protocol
 
-from carrefour_ocr_mcp.contracts import ExamResult
+from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
 from carrefour_ocr_mcp.services.exam_extractor.factory import ExamExtractorFactory
 from carrefour_ocr_mcp.services.exam_extractor.image_decoder import decode_image
 
@@ -26,7 +26,7 @@ class VisionExamExtractor:
         self._vision_client = vision_client
         self._factory = factory or ExamExtractorFactory()
 
-    async def extract_exams(self, image: bytes) -> ExamResult:
+    async def extract_exams(self, image: bytes) -> ExamExtractionCandidate:
         decoded_image = decode_image(image)
         annotation = await self._vision_client.detect_document_text(image)
         started_at = monotonic()

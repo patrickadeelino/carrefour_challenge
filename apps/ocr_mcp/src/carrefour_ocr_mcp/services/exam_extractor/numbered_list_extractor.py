@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from carrefour_ocr_mcp.contracts import ExamResult
+from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
 from carrefour_ocr_mcp.services.exam_extractor.errors import ExamLayoutError
 from carrefour_ocr_mcp.services.exam_extractor.ocr_data import (
     normalize_exam_name,
@@ -15,7 +15,7 @@ class NumberedListExamExtractor:
     def __init__(self, text: str) -> None:
         self._text = text
 
-    def extract_exams(self) -> ExamResult:
+    def extract_exams(self) -> ExamExtractionCandidate:
         return {"exams": _extract_numbered_exams(self._text)}
 
 

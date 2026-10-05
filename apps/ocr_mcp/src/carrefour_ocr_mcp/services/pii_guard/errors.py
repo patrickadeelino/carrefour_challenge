@@ -1,3 +1,13 @@
+class InvalidExamResultError(ValueError):
+    """Sanitized rejection for extractor results outside the public contract."""
+
+    error_code = "invalid_ocr_result"
+    component = "pii_guard"
+
+    def __init__(self) -> None:
+        super().__init__("O OCR retornou um resultado fora do contrato permitido.")
+
+
 class PiiAnalysisError(RuntimeError):
     """Sanitized failure raised when an output could not be checked for PII."""
 

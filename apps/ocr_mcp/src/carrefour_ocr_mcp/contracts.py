@@ -16,8 +16,9 @@ class ExamPiiReviewResult(TypedDict):
     reason: Literal["sensitive_data_detected"]
 
 
-ExamResult: TypeAlias = ExamExtractionResult | ExamReviewResult | ExamPiiReviewResult
+ExamExtractionCandidate: TypeAlias = ExamExtractionResult | ExamReviewResult
+ExamResult: TypeAlias = ExamExtractionCandidate | ExamPiiReviewResult
 
 
 class ExamExtractor(Protocol):
-    async def extract_exams(self, image: bytes) -> ExamResult: ...
+    async def extract_exams(self, image: bytes) -> ExamExtractionCandidate: ...

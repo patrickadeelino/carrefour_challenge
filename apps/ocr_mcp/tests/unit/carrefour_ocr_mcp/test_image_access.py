@@ -2,9 +2,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from mcp.server.mcpserver.exceptions import ToolError
 
-from carrefour_ocr_mcp.image_access import read_image
+from carrefour_ocr_mcp.image_access import ImageAccessError, read_image
 
 
 def test_read_image_rejects_symlink_without_disclosing_target(tmp_path: Path) -> None:
@@ -15,7 +14,7 @@ def test_read_image_rejects_symlink_without_disclosing_target(tmp_path: Path) ->
     image_id = str(uuid4())
     (image_directory / image_id).symlink_to(outside_image)
 
-    with pytest.raises(ToolError, match="Imagem indisponível") as error:
+    with pytest.raises(ImageAccessError, match="Imagem indisponível") as error:
         read_image(image_directory, image_id)
 
     assert str(outside_image) not in str(error.value)
@@ -40,7 +39,7 @@ def test_read_image_rejects_resolved_path_outside_image_directory(
 
     monkeypatch.setattr(Path, "resolve", resolve_with_outside_target)
 
-    with pytest.raises(ToolError, match="Imagem indisponível"):
+    with pytest.raises(ImageAccessError, match="Imagem indisponível"):
         read_image(image_directory, image_id)
 
 
@@ -57,7 +56,9 @@ def test_read_image_sanitizes_filesystem_read_error(
 
     monkeypatch.setattr(Path, "read_bytes", fail_read)
 
-    with pytest.raises(ToolError, match="Não foi possível acessar a imagem") as error:
+    with pytest.raises(
+        ImageAccessError, match="Não foi possível acessar a imagem"
+    ) as error:
         read_image(image_directory, image_id)
 
     assert "private filesystem location" not in str(error.value)

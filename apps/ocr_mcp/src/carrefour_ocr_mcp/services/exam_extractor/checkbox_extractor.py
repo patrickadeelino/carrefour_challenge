@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from PIL import Image
 
-from carrefour_ocr_mcp.contracts import ExamResult
+from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
 from carrefour_ocr_mcp.services.exam_extractor.checkbox_classifier import (
     CheckboxMarkClassifier,
 )
@@ -17,7 +18,7 @@ from carrefour_ocr_mcp.value_objects.exam import (
     ExamCode,
     ExamMark,
 )
-from carrefour_ocr_mcp.value_objects.ocr_document import OcrDocument
+from carrefour_ocr_mcp.value_objects.ocr_document import OcrDocument, OcrWord
 
 EXPECTED_FORM_CODES = tuple(f"EX-{number}" for number in range(101, 111))
 
@@ -29,11 +30,13 @@ class CheckboxExamExtractor:
         self._document = document
         self._image = image
 
-    def extract_exams(self) -> ExamResult:
+    def extract_exams(self) -> ExamExtractionCandidate:
         return _extract_checkbox_exams(self._document, self._image)
 
 
-def _extract_checkbox_exams(document: OcrDocument, image: Image.Image) -> ExamResult:
+def _extract_checkbox_exams(
+    document: OcrDocument, image: Image.Image
+) -> ExamExtractionCandidate:
     classifier = CheckboxMarkClassifier(image)
     codes = _find_exam_codes(document, classifier)
     found_codes = {exam.code for exam in codes}
@@ -67,35 +70,7 @@ def _find_exam_codes(
 ) -> list[ExamCode]:
     candidates_by_code: dict[str, list[ExamCode]] = {}
     for words in document.paragraphs:
-        normalized_characters: list[str] = []
-        character_word_indexes: list[int] = []
-        for word_index, word in enumerate(words):
-            for character in word.text.upper():
-                if character.isalnum():
-                    normalized_characters.append(character)
-                    character_word_indexes.append(word_index)
-
-        normalized_text = "".join(normalized_characters)
-        for match in re.finditer(r"EX\d{3}", normalized_text):
-            word_indexes = sorted(
-                {
-                    character_word_indexes[position]
-                    for position in range(match.start(), match.end())
-                }
-            )
-            code_words = [words[word_index] for word_index in word_indexes]
-            valid_bounds = [
-                bounds for word in code_words if (bounds := word.bounds) is not None
-            ]
-            if not valid_bounds:
-                continue
-
-            code = f"EX-{match.group()[2:]}"
-            exam = ExamCode(
-                code=code,
-                left=min(bound.left for bound in valid_bounds),
-                top=min(bound.top for bound in valid_bounds),
-            )
+        for code, exam in _paragraph_exam_code_candidates(words):
             candidates_by_code.setdefault(code, []).append(exam)
 
     return [
@@ -105,6 +80,42 @@ def _find_exam_codes(
         )
         for candidates in candidates_by_code.values()
     ]
+
+
+def _paragraph_exam_code_candidates(
+    words: Sequence[OcrWord],
+) -> list[tuple[str, ExamCode]]:
+    normalized_characters: list[str] = []
+    character_word_indexes: list[int] = []
+    for word_index, word in enumerate(words):
+        for character in word.text.upper():
+            if character.isalnum():
+                normalized_characters.append(character)
+                character_word_indexes.append(word_index)
+
+    normalized_text = "".join(normalized_characters)
+    candidates: list[tuple[str, ExamCode]] = []
+    for match in re.finditer(r"EX\d{3}", normalized_text):
+        word_indexes = {
+            character_word_indexes[position]
+            for position in range(match.start(), match.end())
+        }
+        valid_bounds = [
+            bounds
+            for index in word_indexes
+            if (bounds := words[index].bounds) is not None
+        ]
+        if not valid_bounds:
+            continue
+
+        code = f"EX-{match.group()[2:]}"
+        exam = ExamCode(
+            code=code,
+            left=min(bounds.left for bounds in valid_bounds),
+            top=min(bounds.top for bounds in valid_bounds),
+        )
+        candidates.append((code, exam))
+    return candidates
 
 
 def _exam_name(document: OcrDocument, exam: ExamCode) -> str:

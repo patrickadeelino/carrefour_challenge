@@ -1,13 +1,19 @@
+"""MCP and SSE adapters for the OCR application service."""
+
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from time import monotonic
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 
-from carrefour_ocr_mcp.contracts import ExamExtractor, ExamResult
-from carrefour_ocr_mcp.image_access import ImageAccessError, read_image
+from carrefour_ocr_mcp.contracts import ExamExtractor
+from carrefour_ocr_mcp.services.exam_processing.errors import ExamProcessingError
+from carrefour_ocr_mcp.services.exam_processing.service import ExamProcessingService
 from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
 
 logger = logging.getLogger(__name__)
@@ -18,7 +24,13 @@ def create_server(
     ocr_processor: ExamExtractor,
     pii_guard: PiiOutputGuard,
 ) -> MCPServer:
+    """Build the MCP adapter around the OCR application service."""
     server = MCPServer("carrefour-ocr")
+    processing_service = ExamProcessingService(
+        image_directory=image_directory,
+        extractor=ocr_processor,
+        pii_guard=pii_guard,
+    )
 
     @server.tool()
     async def extract_exams(image_id: str) -> dict[str, object]:
@@ -32,50 +44,10 @@ def create_server(
             },
         )
         try:
-            image_started_at = monotonic()
-            image = read_image(image_directory, image_id)
-            logger.info(
-                "ocr.image.resolved",
-                extra={
-                    "event_name": "ocr.image.resolved",
-                    "component": "image_access",
-                    "duration_ms": _duration_ms(image_started_at),
-                },
-            )
-            raw_result: ExamResult = await ocr_processor.extract_exams(image)
-            result = pii_guard.protect(raw_result)
-        except Exception as error:
-            error_code = getattr(error, "error_code", "ocr_extraction_failed")
-            is_rejection = isinstance(error, ImageAccessError) and error_code in {
-                "invalid_image_id",
-                "image_not_found",
-                "image_unavailable",
-            }
-            log_failure = logger.warning if is_rejection else logger.error
-            event_name = "ocr.tool.rejected" if is_rejection else "ocr.tool.failed"
-            log_failure(
-                event_name,
-                extra={
-                    "event_name": event_name,
-                    "component": getattr(error, "component", "exam_extractor"),
-                    "duration_ms": _duration_ms(started_at),
-                    "error_code": error_code,
-                    "error_type": type(error).__name__,
-                },
-            )
-            raise
-
-        pii_blocked = result.get("reason") == "sensitive_data_detected"
-        if pii_blocked:
-            logger.warning(
-                "ocr.pii.blocked",
-                extra={
-                    "event_name": "ocr.pii.blocked",
-                    "component": "pii_guard",
-                    "error_code": "sensitive_data_detected",
-                    "outcome": "review_required",
-                },
-            )
+            result = await processing_service.extract_exams(image_id)
+        except ExamProcessingError as error:
+            _log_failure(error, started_at)
+            raise ToolError(error.public_message) from None
 
         outcome = (
             "review_required"
@@ -111,6 +83,21 @@ def create_sse_app(
     return server.sse_app(
         host="0.0.0.0",
         transport_security=transport_security,
+    )
+
+
+def _log_failure(error: ExamProcessingError, started_at: float) -> None:
+    log_failure = logger.warning if error.is_rejection else logger.error
+    event_name = "ocr.tool.rejected" if error.is_rejection else "ocr.tool.failed"
+    log_failure(
+        event_name,
+        extra={
+            "event_name": event_name,
+            "component": error.component,
+            "duration_ms": _duration_ms(started_at),
+            "error_code": error.error_code,
+            "error_type": error.error_type,
+        },
     )
 
 

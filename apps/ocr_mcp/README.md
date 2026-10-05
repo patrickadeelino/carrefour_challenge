@@ -11,6 +11,15 @@ configurado e entrega os bytes a um extrator injetado. O resultado público é
 estruturado como `{"exams": ["Hemograma completo"]}`. Os nomes dos exames
 permanecem no idioma reconhecido; os nomes das chaves JSON são em inglês.
 
+A fronteira da tool aceita somente formas exatas: sucesso `{"exams": [...]}`;
+revisão manual com `status: "review_required"`, `exams` e `ambiguous_exams`; ou
+bloqueio de privacidade com `status: "review_required"` e
+`reason: "sensitive_data_detected"`. Campos extras, listas malformadas e estados
+desconhecidos falham de forma segura. A barreira reconstrói a saída usando apenas
+as chaves permitidas e analisa todos os nomes antes de devolvê-los. Falhas
+técnicas retornam um erro genérico de tool; logs contêm somente classificação
+operacional estável, sem conteúdo da exceção ou valores do documento.
+
 O servidor recebe o extrator por injeção; os testes do contrato MCP usam um
 extrator falso e validam descoberta/chamada tanto com cliente em memória quanto
 por HTTP+SSE local real. Em execução, o app inicia o transporte HTTP+SSE na
@@ -40,6 +49,12 @@ Os testes usam `httpx.MockTransport`: verificam a requisição e os caminhos de
 erro sem contactar a API ou consumir cota.
 
 ## Extração e classificação local
+
+`ExamProcessingService`, em
+`src/carrefour_ocr_mcp/services/exam_processing/`, coordena a leitura pelo UUID,
+a extração e a barreira de PII. `server.py` mantém a adaptação ao MCP: recebe o
+argumento da tool, chama o serviço e converte falhas seguras em erros do
+protocolo.
 
 Os serviços de extração ficam em `src/carrefour_ocr_mcp/services/exam_extractor/`.
 `VisionExamExtractor` chama o Vision e delega à `ExamExtractorFactory`, que

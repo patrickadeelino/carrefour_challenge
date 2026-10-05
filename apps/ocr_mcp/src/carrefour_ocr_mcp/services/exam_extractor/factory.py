@@ -5,7 +5,7 @@ from typing import Protocol
 
 from PIL import Image
 
-from carrefour_ocr_mcp.contracts import ExamResult
+from carrefour_ocr_mcp.contracts import ExamExtractionCandidate
 from carrefour_ocr_mcp.services.exam_extractor.checkbox_extractor import (
     CheckboxExamExtractor,
 )
@@ -20,7 +20,7 @@ from carrefour_ocr_mcp.services.exam_extractor.ocr_data import (
 
 
 class ExamProcessor(Protocol):
-    def extract_exams(self) -> ExamResult: ...
+    def extract_exams(self) -> ExamExtractionCandidate: ...
 
 
 class ExamExtractorFactory:
