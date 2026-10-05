@@ -45,11 +45,61 @@ def test_generate_includes_the_validated_agent_configuration(tmp_path):
 
     source = output_path.read_text(encoding="utf-8")
     assert "AGENT_NAME = 'exam_scheduler_demo'" in source
-    assert "MODEL_NAME = 'gemini-3.8-flash'" in source
+    assert "MODEL_NAME = 'gemini-3.1-flash-lite'" in source
     assert (
         "TOOL_IDS = ('medical_order_ocr', 'exam_catalog_search', 'appointment_booking')"
     ) in source
     assert "def create_agent(registered_tools" in source
+
+
+def test_generate_supports_zai_glm_53_model(tmp_path, monkeypatch):
+    specification = json.loads(SPECIFICATION_PATH.read_text(encoding="utf-8"))
+    specification["agent"]["model"] = {
+        "provider": "zai",
+        "name": "glm-5.3",
+    }
+    specification_path = tmp_path / "zai_specification.json"
+    specification_path.write_text(json.dumps(specification), encoding="utf-8")
+    output_path = tmp_path / "agent.py"
+    monkeypatch.setenv("ZAI_API_KEY", "test-zai-api-key")
+
+    generate_agent_directly(output_path, specification_path)
+
+    source = output_path.read_text(encoding="utf-8")
+    assert "MODEL_PROVIDER = 'zai'" in source
+    assert "MODEL_NAME = 'glm-5.3'" in source
+    assert "LiteLlm(" in source
+    assert 'model=f"openai/{MODEL_NAME}"' in source
+    assert "api_base=ZAI_API_BASE_URL" in source
+    assert "ZAI_API_BASE_URL = 'https://api.z.ai/api/paas/v4'" in source
+    assert "ZAI_API_KEY" in source
+    assert "test-zai-api-key" not in source
+
+    from google.adk.models.lite_llm import LiteLlm
+
+    generated_agent = load_generated_agent(output_path)
+    tool_bindings = {
+        "medical_order_ocr": medical_order_ocr,
+        "exam_catalog_search": exam_catalog_search,
+        "appointment_booking": appointment_booking,
+    }
+    agent = generated_agent.create_agent(tool_bindings)
+
+    assert isinstance(agent.model, LiteLlm)
+    assert agent.model.model == "openai/glm-5.3"
+
+
+def test_generate_rejects_glm_model_with_gemini_provider(tmp_path):
+    specification = json.loads(SPECIFICATION_PATH.read_text(encoding="utf-8"))
+    specification["agent"]["model"]["name"] = "glm-5.3"
+    invalid_specification = tmp_path / "invalid_model_pair.json"
+    invalid_specification.write_text(json.dumps(specification), encoding="utf-8")
+    output_path = tmp_path / "agent.py"
+
+    with pytest.raises(InvalidAgentSpecification):
+        generate_agent_directly(output_path, invalid_specification)
+
+    assert not output_path.exists()
 
 
 def test_generated_factory_builds_real_adk_agent_from_exact_registered_tools(
@@ -69,8 +119,9 @@ def test_generated_factory_builds_real_adk_agent_from_exact_registered_tools(
 
     assert isinstance(agent, Agent)
     assert agent.name == "exam_scheduler_demo"
-    assert agent.model == "gemini-3.8-flash"
-    assert "agendamento de exames" in agent.instruction
+    assert agent.model == "gemini-3.1-flash-lite"
+    assert "# Papel" in agent.instruction
+    assert "pedidos de exames" in agent.instruction
     assert agent.tools == list(tool_bindings.values())
 
 

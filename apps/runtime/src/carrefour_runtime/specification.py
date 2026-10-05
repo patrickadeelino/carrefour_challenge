@@ -1,6 +1,6 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .tool_registry import REQUIRED_TOOL_IDS, ToolId
 
@@ -10,8 +10,19 @@ class StrictSpecificationModel(BaseModel):
 
 
 class ModelSpecification(StrictSpecificationModel):
-    provider: Literal["gemini"]
-    name: Literal["gemini-3.8-flash"]
+    provider: Literal["gemini", "zai"]
+    name: Literal["gemini-3.1-flash-lite", "glm-5.3"]
+
+    @model_validator(mode="after")
+    def validate_provider_model_pair(self) -> Self:
+        allowed_models = {
+            "gemini": "gemini-3.1-flash-lite",
+            "zai": "glm-5.3",
+        }
+        if allowed_models[self.provider] != self.name:
+            raise ValueError("o modelo não pertence ao provedor declarado")
+
+        return self
 
 
 class AgentSpecification(StrictSpecificationModel):

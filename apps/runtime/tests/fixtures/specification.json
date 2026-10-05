@@ -4,7 +4,7 @@
     "type": "exam_scheduler",
     "model": {
       "provider": "gemini",
-      "name": "gemini-3.8-flash"
+      "name": "gemini-3.1-flash-lite"
     },
     "tools": [
       "medical_order_ocr",

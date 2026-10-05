@@ -21,6 +21,7 @@ from carrefour_runtime.services.process.errors import ProcessExecutionError
 from carrefour_runtime.services.process.processing_lock import ProcessingLock
 from carrefour_runtime.services.process.service import ProcessService
 from carrefour_runtime.value_objects.image_id import ImageId
+from carrefour_runtime.value_objects.process_result import ProcessResult
 
 
 @contextmanager
@@ -56,12 +57,17 @@ class FakeExecutor:
         self.on_call = on_call
         self.received_image_id: ImageId | None = None
 
-    async def extract_exams(self, image_id: ImageId) -> object:
+    async def execute(self, image_id: ImageId) -> object:
         self.received_image_id = image_id
         if self.on_call is not None:
             self.on_call(image_id)
         if isinstance(self.result, Exception):
             raise self.result
+        if isinstance(self.result, dict):
+            try:
+                return ProcessResult.from_ocr(self.result)
+            except ValueError:
+                return self.result
         return self.result
 
 
@@ -114,7 +120,7 @@ def test_process_stores_image_passes_only_uuid_and_deletes_temporary_copy(
     assert original.read_bytes() == original_bytes
 
 
-def test_process_removes_image_when_ocr_fails_and_sanitizes_error(
+def test_process_removes_image_when_workflow_fails_and_sanitizes_error(
     tmp_path: Path,
 ) -> None:
     images = tmp_path / "input"
@@ -135,7 +141,7 @@ def test_process_removes_image_when_ocr_fails_and_sanitizes_error(
     assert list(store.root.iterdir()) == []
 
 
-def test_process_rejects_invalid_image_before_calling_ocr(tmp_path: Path) -> None:
+def test_process_rejects_invalid_image_before_calling_workflow(tmp_path: Path) -> None:
     images = tmp_path / "input"
     images.mkdir()
     (images / "request.png").write_bytes(b"not a PNG image")
@@ -200,7 +206,7 @@ def test_process_reports_sanitized_failure_when_processing_and_cleanup_fail(
         },
     ],
 )
-def test_process_rejects_missing_or_malformed_ocr_result(
+def test_process_rejects_missing_or_malformed_workflow_result(
     tmp_path: Path, malformed_result: object
 ) -> None:
     images = tmp_path / "input"
@@ -214,7 +220,7 @@ def test_process_rejects_missing_or_malformed_ocr_result(
         lock_path=tmp_path / "locks" / "process.lock",
     )
 
-    with pytest.raises(ProcessExecutionError, match="resultado estruturado"):
+    with pytest.raises(ProcessExecutionError, match="resultado inválido"):
         asyncio.run(service.process("request.png"))
 
     assert list(store.root.iterdir()) == []
@@ -241,14 +247,14 @@ def test_process_logs_safe_lifecycle_events_and_stage_durations(tmp_path: Path) 
     assert events == [
         "process.started",
         "process.image.stored",
-        "process.ocr.started",
-        "process.ocr.completed",
+        "process.workflow.started",
+        "process.workflow.completed",
         "process.image_cleanup.completed",
         "process.completed",
     ]
     assert records[1]["component"] == "temporary_image_store"
     assert records[1]["duration_ms"] >= 0
-    assert records[3]["component"] == "ocr_executor"
+    assert records[3]["component"] == "workflow_executor"
     assert records[3]["duration_ms"] >= 0
     assert records[-1]["outcome"] == "success"
     serialized_logs = log_stream.getvalue()

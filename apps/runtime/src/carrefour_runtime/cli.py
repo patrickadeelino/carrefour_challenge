@@ -6,7 +6,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from carrefour_observability.logging_config import configure_json_logging
+from carrefour_observability.telemetry import (
+    configure_telemetry,
+    shutdown_telemetry,
+)
 
 from .services.generate.service import (
     InvalidAgentSpecification,
@@ -18,8 +21,13 @@ from .services.process.composition import (
     create_process_service,
 )
 from .services.process.errors import ProcessExecutionError
+from .services.process.message_formatter import (
+    ProcessMessageFormatError,
+    format_process_message,
+)
 from .validation import validate_specification
-from .value_objects.exam_result import ExamResult
+from .value_objects.process_result import ProcessResult
+from .value_objects.user_id import UserId
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +48,9 @@ def _parser() -> argparse.ArgumentParser:
         "process", help="processa uma imagem de pedido de exames"
     )
     process_command.add_argument("--path", required=True, help="nome do arquivo")
+    process_command.add_argument(
+        "--user", required=True, help="identificador local do usuário"
+    )
     return parser
 
 
@@ -87,16 +98,35 @@ def _run_generation(output_path: Path, specification: Any) -> int:
     return 0
 
 
-def print_process_result(result: ExamResult) -> int:
-    print(json.dumps(result.to_dict(), ensure_ascii=False))
-    if result.requires_review:
-        return 2
-    return 0
-
-
-def _run_processing(filename: str) -> int:
+def print_process_result(result: ProcessResult) -> int:
     try:
-        service = create_process_service()
+        message = format_process_message(result)
+    except ProcessMessageFormatError:
+        logger.error(
+            "process.output.failed",
+            extra={
+                "event_name": "process.output.failed",
+                "component": "cli",
+                "error_code": "process_result_not_presentable",
+                "error_type": "ProcessMessageFormatError",
+            },
+        )
+        print("não foi possível apresentar o resultado com segurança", file=sys.stderr)
+        return 1
+
+    print(message)
+    return result.exit_code
+
+
+def _run_processing(filename: str, user_id_value: str) -> int:
+    try:
+        user_id = UserId(user_id_value)
+    except ValueError:
+        print("identificador de usuário inválido", file=sys.stderr)
+        return 1
+
+    try:
+        service = create_process_service(user_id)
     except ProcessConfigurationError as error:
         logger.error(
             "process.configuration_failed",
@@ -158,8 +188,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
 
     if args.command == "process":
-        configure_json_logging("carrefour_runtime", "assistant-runtime")
-        return _run_processing(args.path)
+        configure_telemetry("assistant-runtime", "carrefour_runtime")
+        try:
+            return _run_processing(args.path, args.user)
+        finally:
+            shutdown_telemetry()
 
     try:
         specification = _read_specification(args.specification)

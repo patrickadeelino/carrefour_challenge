@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from carrefour_runtime.services.process import composition
+from carrefour_runtime.value_objects.user_id import UserId
 
 
 def test_create_process_service_composes_configured_runtime_dependencies(
@@ -13,16 +14,39 @@ def test_create_process_service_composes_configured_runtime_dependencies(
     monkeypatch.setenv("CARREFOUR_GENERATED_AGENT_PATH", str(generated_agent))
     monkeypatch.setenv("CARREFOUR_INPUT_IMAGES_DIRECTORY", str(input_images))
     monkeypatch.setenv("CARREFOUR_PROCESS_LOCK_PATH", str(lock_path))
-    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("ZAI_API_KEY", "test-key")
+    monkeypatch.setenv(
+        "CARREFOUR_SCHEDULE_JWT_SECRET", "test-signing-secret-that-is-at-least-32-bytes"
+    )
 
     image_store = object()
     executor = object()
+    schedule_client = object()
     service_arguments = {}
     monkeypatch.setattr(composition, "TemporaryImageStore", lambda: image_store)
     monkeypatch.setattr(
         composition,
-        "AdkOcrExecutor",
-        lambda path: executor if path == generated_agent else None,
+        "ScheduleApiClient",
+        lambda url, secret: (
+            schedule_client
+            if (url, secret)
+            == (
+                "http://schedule-api:8000",
+                "test-signing-secret-that-is-at-least-32-bytes",
+            )
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        composition,
+        "AdkWorkflowExecutor",
+        lambda path, user_id, client: (
+            executor
+            if (path, user_id, client)
+            == (generated_agent, UserId("user-1"), schedule_client)
+            else None
+        ),
     )
 
     class FakeProcessService:
@@ -31,7 +55,7 @@ def test_create_process_service_composes_configured_runtime_dependencies(
 
     monkeypatch.setattr(composition, "ProcessService", FakeProcessService)
 
-    service = composition.create_process_service()
+    service = composition.create_process_service(UserId("user-1"))
 
     assert isinstance(service, FakeProcessService)
     assert service_arguments == {
@@ -49,6 +73,10 @@ def test_create_process_service_uses_runtime_defaults(
     generated_agent.touch()
     monkeypatch.setenv("CARREFOUR_GENERATED_AGENT_PATH", str(generated_agent))
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+    monkeypatch.setenv(
+        "CARREFOUR_SCHEDULE_JWT_SECRET", "test-signing-secret-that-is-at-least-32-bytes"
+    )
     monkeypatch.delenv("CARREFOUR_INPUT_IMAGES_DIRECTORY", raising=False)
     monkeypatch.delenv("CARREFOUR_PROCESS_LOCK_PATH", raising=False)
 
@@ -59,10 +87,11 @@ def test_create_process_service_uses_runtime_defaults(
             service_arguments.update(kwargs)
 
     monkeypatch.setattr(composition, "TemporaryImageStore", object)
-    monkeypatch.setattr(composition, "AdkOcrExecutor", lambda _: object())
+    monkeypatch.setattr(composition, "ScheduleApiClient", lambda *_: object())
+    monkeypatch.setattr(composition, "AdkWorkflowExecutor", lambda *_: object())
     monkeypatch.setattr(composition, "ProcessService", FakeProcessService)
 
-    composition.create_process_service()
+    composition.create_process_service(UserId("user-1"))
 
     assert service_arguments["image_directory"] == Path(
         "/workspace/tests/fixtures/images"
@@ -79,7 +108,7 @@ def test_create_process_service_requires_generated_agent_before_api_key(
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
     try:
-        composition.create_process_service()
+        composition.create_process_service(UserId("user-1"))
     except composition.ProcessConfigurationError as error:
         assert error.error_code == "generated_agent_missing"
         assert "execute generate" in error.public_message

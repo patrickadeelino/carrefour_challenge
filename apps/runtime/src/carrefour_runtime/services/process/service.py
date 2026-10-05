@@ -1,4 +1,4 @@
-"""Orquestra o armazenamento temporário e a chamada da tool de OCR."""
+"""Orquestra a imagem temporária e a execução do fluxo completo do agente."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from time import monotonic
 from typing import Protocol
+
+from opentelemetry import trace
 
 from carrefour_runtime.services.image_storage.temporary_store import ImageStorageError
 from carrefour_runtime.services.process.errors import ProcessExecutionError
@@ -18,14 +20,15 @@ from carrefour_runtime.services.process.processing_lock import (
     ProcessingInProgress,
     ProcessingLock,
 )
-from carrefour_runtime.value_objects.exam_result import ExamResult
 from carrefour_runtime.value_objects.image_id import ImageId
+from carrefour_runtime.value_objects.process_result import ProcessResult
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
-class OCRExecutor(Protocol):
-    async def extract_exams(self, image_id: ImageId) -> object: ...
+class ProcessWorkflowExecutor(Protocol):
+    async def execute(self, image_id: ImageId) -> object: ...
 
 
 class ImageStore(Protocol):
@@ -37,13 +40,13 @@ class ImageStore(Protocol):
 
 
 class ProcessService:
-    """Executa um pedido por vez e apaga a cópia temporária ao finalizar."""
+    """Executa o fluxo completo por vez e apaga a cópia ao finalizar."""
 
     def __init__(
         self,
         image_directory: Path,
         image_store: ImageStore,
-        executor: OCRExecutor,
+        executor: ProcessWorkflowExecutor,
         lock_path: Path,
     ) -> None:
         self.image_directory = image_directory
@@ -51,7 +54,24 @@ class ProcessService:
         self.executor = executor
         self.lock_path = lock_path
 
-    async def process(self, filename: str) -> ExamResult:
+    async def process(self, filename: str) -> ProcessResult:
+        with tracer.start_as_current_span(
+            "process", record_exception=False, set_status_on_exception=False
+        ) as span:
+            try:
+                result = await self._process(filename)
+            except ProcessExecutionError as error:
+                span.set_attribute("process.outcome", "failed")
+                span.set_attribute("error.code", error.error_code)
+                span.set_status(trace.StatusCode.ERROR)
+                raise
+            span.set_attribute(
+                "process.outcome",
+                "review_required" if result.requires_review else "success",
+            )
+            return result
+
+    async def _process(self, filename: str) -> ProcessResult:
         started_at = monotonic()
         logger.info(
             "process.started",
@@ -100,14 +120,25 @@ class ProcessService:
         )
         return result
 
-    async def _process_locked(self, filename: str) -> ExamResult:
+    async def _process_locked(self, filename: str) -> ProcessResult:
         image_id: ImageId | None = None
-        result: ExamResult | None = None
+        result: ProcessResult | None = None
         failure: ProcessExecutionError | None = None
         cleanup_failure: ImageStorageError | None = None
         try:
             image_started_at = monotonic()
-            image_id = self._store_image(filename)
+            with tracer.start_as_current_span(
+                "process.image.store",
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    image_id = self._store_image(filename)
+                except Exception:
+                    span.set_attribute("process.image.store.outcome", "failed")
+                    span.set_status(trace.StatusCode.ERROR)
+                    raise
+                span.set_attribute("process.image.store.outcome", "success")
             logger.info(
                 "process.image.stored",
                 extra={
@@ -116,25 +147,36 @@ class ProcessService:
                     "duration_ms": _duration_ms(image_started_at),
                 },
             )
-            ocr_started_at = monotonic()
+            workflow_started_at = monotonic()
             logger.info(
-                "process.ocr.started",
+                "process.workflow.started",
                 extra={
-                    "event_name": "process.ocr.started",
-                    "component": "ocr_executor",
+                    "event_name": "process.workflow.started",
+                    "component": "workflow_executor",
                 },
             )
-            raw_result = await self.executor.extract_exams(image_id)
-            result = self._validate_result(raw_result)
-            log_ocr_completion = (
+            with tracer.start_as_current_span(
+                "process.workflow.execute",
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    raw_result = await self.executor.execute(image_id)
+                except Exception:
+                    span.set_attribute("process.workflow.outcome", "failed")
+                    span.set_status(trace.StatusCode.ERROR)
+                    raise
+                span.set_attribute("process.workflow.outcome", "response_received")
+            result = self._validate_workflow_result(raw_result)
+            log_workflow_completion = (
                 logger.warning if result.requires_review else logger.info
             )
-            log_ocr_completion(
-                "process.ocr.completed",
+            log_workflow_completion(
+                "process.workflow.completed",
                 extra={
-                    "event_name": "process.ocr.completed",
-                    "component": "ocr_executor",
-                    "duration_ms": _duration_ms(ocr_started_at),
+                    "event_name": "process.workflow.completed",
+                    "component": "workflow_executor",
+                    "duration_ms": _duration_ms(workflow_started_at),
                     "outcome": "review_required"
                     if result.requires_review
                     else "success",
@@ -143,15 +185,25 @@ class ProcessService:
         except Exception as error:
             failure = _safe_process_error(error)
         finally:
-            cleanup_failure = self.delete_image(image_id)
+            with tracer.start_as_current_span(
+                "process.image.cleanup",
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                cleanup_failure = self.delete_image(image_id)
+                span.set_attribute(
+                    "process.image.cleanup.outcome",
+                    "failed" if cleanup_failure else "completed",
+                )
+                if cleanup_failure is not None:
+                    span.set_status(trace.StatusCode.ERROR)
 
         self._raise_failures(failure, cleanup_failure)
         if result is None:
             raise ProcessExecutionError(
-                "OCR não retornou um resultado estruturado válido",
-                error_code="ocr_result_invalid",
-                component="ocr_result",
-                error_type="InvalidExamResult",
+                "fluxo do agente não retornou um resultado válido",
+                error_code="workflow_result_missing",
+                component="workflow_executor",
             )
         return result
 
@@ -163,16 +215,15 @@ class ProcessService:
         return self.image_store.store(image_bytes)
 
     @staticmethod
-    def _validate_result(value: object) -> ExamResult:
-        try:
-            return ExamResult.from_mapping(value)
-        except ValueError as error:
-            raise ProcessExecutionError(
-                "OCR não retornou um resultado estruturado válido",
-                error_code="ocr_result_invalid",
-                component="ocr_result",
-                error_type=type(error).__name__,
-            ) from error
+    def _validate_workflow_result(value: object) -> ProcessResult:
+        if isinstance(value, ProcessResult):
+            return value
+        raise ProcessExecutionError(
+            "fluxo do agente retornou um resultado inválido",
+            error_code="workflow_result_invalid",
+            component="workflow_executor",
+            error_type=type(value).__name__,
+        )
 
     @staticmethod
     def _raise_failures(
@@ -273,8 +324,8 @@ def _safe_process_error(error: Exception) -> ProcessExecutionError:
         )
     return ProcessExecutionError(
         "falha técnica durante o processamento",
-        error_code="ocr_execution_failed",
-        component="ocr_executor",
+        error_code="workflow_execution_failed",
+        component="workflow_executor",
         error_type=type(error).__name__,
     )
 

@@ -3,8 +3,8 @@
     "name": "exam_scheduler_demo",
     "type": "exam_scheduler",
     "model": {
-      "provider": "gemini",
-      "name": "gemini-3.8-flash"
+      "provider": "zai",
+      "name": "glm-5.3"
     },
     "tools": [
       "medical_order_ocr",

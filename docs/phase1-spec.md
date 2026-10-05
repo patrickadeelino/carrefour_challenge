@@ -15,7 +15,7 @@ Formato aceito:
     "type": "exam_scheduler",
     "model": {
       "provider": "gemini",
-      "name": "gemini-3.8-flash"
+      "name": "gemini-3.1-flash-lite"
     },
     "tools": [
       "medical_order_ocr",
@@ -26,7 +26,7 @@ Formato aceito:
 }
 ~~~
 
-O model ID `gemini-3.8-flash` está na allowlist inicial do projeto.
+A allowlist aceita os pares `gemini`/`gemini-3.1-flash-lite` e `zai`/`glm-5.3`. O primeiro foi selecionado para continuar a validação manual após responder `OK` em uma chamada REST exploratória; o segundo foi adicionado para testar a integração alternativa via LiteLLM.
 
 ## 2. Contrato dos campos
 
@@ -34,8 +34,8 @@ O model ID `gemini-3.8-flash` está na allowlist inicial do projeto.
 |---|---|
 | agent.name | String obrigatória com até 63 caracteres, começando por letra minúscula e contendo apenas letras minúsculas, números ou `_`. |
 | agent.type | Valor obrigatório e fixo: `exam_scheduler`. |
-| agent.model.provider | Valor obrigatório e fixo: `gemini`. |
-| agent.model.name | Valor obrigatório e atualmente único na allowlist: `gemini-3.8-flash`. |
+| agent.model.provider | Provedor explícito: `gemini` ou `zai`, aceito somente com o modelo pareado na allowlist. |
+| agent.model.name | Nome explícito do modelo: `gemini-3.1-flash-lite` ou `glm-5.3`, pareado respectivamente com `gemini` ou `zai`. |
 | agent.tools | Lista sem duplicatas contendo exatamente `medical_order_ocr`, `exam_catalog_search` e `appointment_booking`. A ordem no JSON não afeta a ordem canônica do código gerado. |
 
 Todos os campos são obrigatórios. Campos desconhecidos e valores fora dos tipos ou listas aceitos são rejeitados.
@@ -60,7 +60,7 @@ Não haverá campo instruction no JSON. O campo type seleciona um conjunto fixo 
 
 ## 5. Provedor de modelo
 
-A versão inicial limita `provider` a `gemini` e aceita somente `gemini-3.8-flash` na allowlist. A autenticação e a escolha entre os modos de acesso do Gemini são configuração de ambiente, não conteúdo do JSON.
+A allowlist aceita somente estes pares explícitos de provedor e modelo: `gemini` com `gemini-3.1-flash-lite` e `zai` com `glm-5.3`. A autenticação é configuração de ambiente, não conteúdo do JSON. A integração Z.ai usa o adaptador LiteLLM do ADK e a variável `ZAI_API_KEY`; isso não habilita modelos ou provedores arbitrários.
 
 Outros modelos podem ser acrescentados futuramente com um provedor e adaptador explicitamente implementados. O ADK documenta integração com LiteLLM para modelos externos; isso requer dependências e credenciais específicas e, portanto, não significa que qualquer string de modelo seja executável automaticamente.
 
@@ -76,7 +76,7 @@ Outros modelos podem ser acrescentados futuramente com um provedor e adaptador e
 ### Semântica
 
 - type existente e habilitado.
-- provider `gemini` e model name presente na allowlist.
+- par `provider`/`name` presente na allowlist.
 - tools sem IDs repetidos, todos registrados e permitidos pelo tipo.
 - Todas as tools requeridas por exam_scheduler presentes.
 - Nome de agente dentro do padrão definido.
@@ -111,7 +111,8 @@ O CLI usa `generate specification.json --output caminho/agent.py`. A factory ger
 
 ## 9. Referências técnicas iniciais
 
-- [Google Cloud: Gemini 3.8 Flash e model ID](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-8-flash)
+- [Google AI for Developers: Gemini 3.1 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite)
+- [Z.ai: GLM-5.3](https://docs.z.ai/guides/llm/glm-5.3)
 - [Google ADK: modelos e exemplo de definição de agente](https://google.github.io/agents-cli/guide/project-structure/)
 - [Google ADK: Runner e InMemoryRunner](https://github.com/google/adk-python/blob/main/docs/guides/runners/runner/index.md)
 - [Google ADK: estratégia de testes unitários, de integração e avaliação](https://github.com/google/adk-python/blob/main/contributing/adk_project_overview_and_architecture.md#testing--evaluation-strategy)

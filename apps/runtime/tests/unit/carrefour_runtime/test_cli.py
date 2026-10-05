@@ -15,7 +15,12 @@ from carrefour_runtime.cli import (
 from carrefour_runtime.services.generate.service import InvalidAgentSpecification
 from carrefour_runtime.services.image_storage.temporary_store import ImageStorageError
 from carrefour_runtime.services.process.errors import ProcessExecutionError
-from carrefour_runtime.value_objects.exam_result import ExamResult
+from carrefour_runtime.services.process.message_formatter import (
+    NO_EXAMS_MESSAGE,
+    REVIEW_MESSAGE,
+)
+from carrefour_runtime.services.process.schedule_api_client import ScheduleApiResponse
+from carrefour_runtime.value_objects.process_result import ProcessResult
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[3]
 SPECIFICATION_PATH = RUNTIME_ROOT / "tests" / "fixtures" / "specification.json"
@@ -196,30 +201,48 @@ def test_process_requires_generate_to_create_the_agent_first(
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
 
-    exit_code = main(["process", "--path", "request.png"])
+    exit_code = main(["process", "--path", "request.png", "--user", "user-1"])
 
     assert exit_code == 1
     assert "execute generate antes de process" in capsys.readouterr().err
 
 
-def test_process_requires_gemini_api_key_after_generation(
-    tmp_path, monkeypatch, capsys
-):
+def test_process_requires_model_api_key_after_generation(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
     generated_agent = tmp_path / "generated" / "agent.py"
     generated_agent.parent.mkdir()
     generated_agent.write_text("", encoding="utf-8")
 
-    exit_code = main(["process", "--path", "request.png"])
+    exit_code = main(["process", "--path", "request.png", "--user", "user-1"])
 
     assert exit_code == 1
-    assert "GOOGLE_API_KEY não configurada" in capsys.readouterr().err
+    assert "GOOGLE_API_KEY ou ZAI_API_KEY não configurada" in capsys.readouterr().err
 
 
 def test_process_uses_an_injectable_service_factory(monkeypatch, capsys):
-    expected = ExamResult.from_mapping({"exams": ["Hemograma completo"]})
+    expected = ProcessResult.scheduled(
+        ScheduleApiResponse.model_validate_json(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "already_scheduled": [],
+                    "newly_scheduled": [
+                        {
+                            "appointment_id": "75e39b6b-0ea7-4a4e-bbcc-20b137b1f70d",
+                            "scheduled_at": "2026-10-05T09:00:00-03:00",
+                            "exam_codes": ["CAT-001"],
+                        }
+                    ],
+                    "not_scheduled": [],
+                }
+            )
+        ),
+        {"CAT-001": "Hemograma completo"},
+    )
     process_calls = []
 
     class FakeProcessService:
@@ -227,13 +250,22 @@ def test_process_uses_an_injectable_service_factory(monkeypatch, capsys):
             process_calls.append(filename)
             return expected
 
-    monkeypatch.setattr(cli, "create_process_service", FakeProcessService)
+    def create_service(user_id):
+        assert user_id.value == "user-1"
+        return FakeProcessService()
 
-    exit_code = main(["process", "--path", "request.png"])
+    monkeypatch.setattr(cli, "create_process_service", create_service)
+
+    exit_code = main(["process", "--path", "request.png", "--user", "user-1"])
 
     assert process_calls == ["request.png"]
     assert exit_code == 0
-    assert json.loads(capsys.readouterr().out) == {"exams": ["Hemograma completo"]}
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "Novos agendamentos confirmados:\n- 05/10/2026 às 09:00 — Hemograma completo\n"
+    )
+    assert "CAT-001" not in captured.out
+    assert captured.err == ""
 
 
 @pytest.mark.parametrize(
@@ -257,14 +289,15 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
             del filename
             raise failure
 
-    def create_process_service():
+    def create_process_service(user_id):
+        assert user_id.value == "user-1"
         if isinstance(failure, ImageStorageError):
             raise failure
         return FailedProcessService()
 
     monkeypatch.setattr(cli, "create_process_service", create_process_service)
 
-    exit_code = main(["process", "--path", "request.png"])
+    exit_code = main(["process", "--path", "request.png", "--user", "user-1"])
 
     captured = capsys.readouterr()
     assert exit_code == 1
@@ -277,10 +310,9 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
 
 
 @pytest.mark.parametrize(
-    ("result", "expected_exit_code"),
+    ("result", "expected_exit_code", "expected_message"),
     [
-        ({"exams": ["Hemograma completo"]}, 0),
-        ({"exams": []}, 0),
+        ({"exams": []}, 0, NO_EXAMS_MESSAGE),
         (
             {
                 "status": "review_required",
@@ -288,6 +320,7 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
                 "ambiguous_exams": ["TSH"],
             },
             2,
+            REVIEW_MESSAGE,
         ),
         (
             {
@@ -295,18 +328,49 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
                 "reason": "sensitive_data_detected",
             },
             2,
+            REVIEW_MESSAGE,
         ),
     ],
 )
-def test_process_prints_json_and_uses_distinct_manual_review_exit_code(
-    result, expected_exit_code, capsys
+def test_process_prints_human_message_and_uses_expected_exit_code(
+    result, expected_exit_code, expected_message, capsys
 ):
-    exit_code = print_process_result(ExamResult.from_mapping(result))
+    exit_code = print_process_result(ProcessResult.from_ocr(result))
 
     captured = capsys.readouterr()
     assert exit_code == expected_exit_code
-    assert json.loads(captured.out) == result
+    assert captured.out == expected_message + "\n"
     assert captured.err == ""
+
+
+def test_process_does_not_print_unmapped_catalog_codes(capsys):
+    result = ProcessResult.scheduled(
+        ScheduleApiResponse.model_validate_json(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "already_scheduled": [],
+                    "newly_scheduled": [
+                        {
+                            "appointment_id": "75e39b6b-0ea7-4a4e-bbcc-20b137b1f70d",
+                            "scheduled_at": "2026-10-05T09:00:00-03:00",
+                            "exam_codes": ["CAT-999"],
+                        }
+                    ],
+                    "not_scheduled": [],
+                }
+            )
+        ),
+        {},
+    )
+
+    exit_code = print_process_result(result)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "CAT-999" not in captured.err
+    assert "não foi possível apresentar o resultado com segurança" in captured.err
 
 
 def test_package_entrypoint_exits_with_cli_result(monkeypatch):
