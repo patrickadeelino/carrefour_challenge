@@ -153,7 +153,7 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 - [x] Implementar a validação estrita do catálogo: estrutura e campos obrigatórios, mínimo de 100 exames, formato e unicidade de códigos, nomes canônicos únicos e aliases não vazios nem repetidos dentro do mesmo exame. Aliases compartilhados entre exames distintos são permitidos para que a busca possa sinalizar ambiguidade.
 - [x] Definir o contrato da tool em lote `search_exams(exam_names)`, com limite de 50 nomes e 160 caracteres por nome. A resposta tem um item por nome normalizado distinto e estados `resolved`, `ambiguous`, `review_required` ou `not_found`.
 - [x] Definir a deduplicação após normalização e a ordem da primeira ocorrência. `input_indices` relaciona cada resultado a todas as posições originais da consulta correspondente.
-- [x] Definir que somente respostas `resolved` incluem código. Respostas ambíguas ou aproximadas incluem nomes candidatos sem códigos; `not_found` não inventa código. A API de agendamento futura recebe apenas exames resolvidos/confirmados.
+- [x] Definir que somente respostas `resolved` incluem código. Respostas ambíguas ou aproximadas incluem nomes candidatos sem códigos; `not_found` não inventa código. A API de agendamento recebe apenas exames resolvidos/confirmados.
 
 #### Etapa 2 — Construir índice e recuperação
 
@@ -191,12 +191,45 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 ### 2.3 — API de agendamento
 
-- [ ] Definir endpoints e modelos de dados conforme o enunciado.
-- [ ] Implementar regras de disponibilidade e conflito de horários.
-- [ ] Cobrir casos válidos, inválidos e de erro.
-- [ ] Documentar a API e sua configuração local.
+**Objetivo:** disponibilizar uma API fictícia de agendamento, persistente e testável sem o agente. A primeira versão recebe os exames resolvidos, reconcilia-os com a agenda do usuário autenticado e escolhe horários livres automaticamente.
 
-**Entrega candidata:** API FastAPI testável sem o agente.
+#### Decisões de escopo para a primeira versão
+
+- [x] Usar SQLite para persistir agendamentos entre chamadas e reinícios do container, guardando o arquivo em volume persistente do Compose.
+- [x] Organizar a API em camadas `api`, `application`, `domain` e `infrastructure` quando cada camada tiver responsabilidade própria; evitar abstrações sem necessidade concreta.
+- [x] Começar com um único `POST /appointments`; a API aloca os horários e devolve a confirmação na mesma chamada. Não expor endpoint de disponibilidade nesta entrega.
+- [x] Tratar `appointment_booking` como a capacidade lógica configurada na especificação do agente. A tool do runtime chama o endpoint da API; a especificação não precisa espelhar cada rota HTTP.
+- [x] Obter a identidade do usuário do claim `sub` de um JWT validado pela API; não aceitar `user_id` como identidade confiável no corpo da requisição.
+- [x] Fazer reconciliação incremental por usuário: preservar exames já agendados e horários existentes; agendar somente os exames novos e evitar duplicatas em chamadas repetidas.
+- [x] Considerar os horários globalmente exclusivos: um horário já reservado não pode ser atribuído a outro usuário; selecionar outro horário livre.
+- [x] Usar transações e restrições no SQLite para garantir que chamadas simultâneas não confirmem duas reservas para o mesmo horário.
+
+#### Contrato, implementação e validação
+
+- [x] Definir o contrato de `POST /appointments`: `Authorization: Bearer <JWT>` e corpo `{"exam_codes": [...]}` sem `user_id`; códigos repetidos são deduplicados preservando a ordem.
+- [x] Definir a resposta agrupada por agendamento: `status` (`completed`, `partial` ou `no_availability`), `already_scheduled`, `newly_scheduled` e `not_scheduled`. Cada agendamento inclui `appointment_id`, `scheduled_at` em ISO 8601 com offset e `exam_codes`; cada exame não agendado inclui o motivo `no_availability`.
+- [x] Tratar falta de horário como resultado de negócio HTTP `200`; usar `401` para credencial ausente/inválida/expirada, `422` para entrada inválida e `503` para indisponibilidade técnica.
+- [x] Fornecer emissor local de JWT HS256 com expiração curta, desabilitado por padrão e habilitado somente no Compose de desenvolvimento; documentar que não substitui um provedor de identidade.
+- [x] Definir os horários fictícios e determinísticos: dias úteis, 09:00–17:00, slots de 30 minutos, fuso `America/Sao_Paulo` e janela configurável de 30 dias.
+- [x] Implementar entidades/regras de agendamento, caso de uso de reconciliação, repositório SQLAlchemy/SQLite, transação de alocação e rota FastAPI.
+- [x] Gerenciar `Engine` e `sessionmaker` no lifespan FastAPI e injetar uma `Session` por request com `Depends`; fechar a sessão antes da resposta.
+- [x] Preservar a alocação atômica com `BEGIN IMMEDIATE`, `UNIQUE` no slot global e chave estrangeira entre agendamentos e exames.
+- [x] Testar sucesso autenticado, token ausente/malformado/expirado e rejeição de campos extras; a identidade usada vem do `sub` verificado.
+- [x] Cobrir chamadas repetidas, exames previamente agendados, exames novos agrupados em um horário, usuários diferentes e exclusividade global dos horários.
+- [x] Cobrir falta de horário, resultado parcial, persistência após reinício, concorrência, falha de escrita e rollback da transação.
+- [x] Validar resposta HTTP sanitizada e logs sem subject, JWT, códigos de exame ou mensagens brutas do SQLite.
+- [x] Documentar e testar os esquemas de autenticação, erros e respostas no Swagger `/docs` e em `/openapi.json`.
+- [x] Adicionar o serviço Compose independente com volumes persistentes e targets de desenvolvimento e runtime.
+- [x] Documentar contrato, configuração, DI, SQLite, emissor local de token, logs, Swagger e comandos nos READMEs da raiz e do app.
+
+#### Reavaliação após a primeira entrega
+
+- [ ] Validar se a experiência precisa oferecer opções de horário para escolha explícita do usuário. Se houver benefício, especificar endpoints separados para propor e confirmar uma agenda antes de implementá-los.
+- [ ] Se a proposta tiver de garantir que os horários continuem disponíveis enquanto o usuário escolhe, avaliar reservas temporárias com expiração (*holds*) e a liberação dos horários não escolhidos. Não manter transações ou locks do SQLite abertos durante a espera do usuário.
+
+**Estado da implementação:** o serviço independente está implementado com DI por request, persistência SQLAlchemy/SQLite, JWT de demonstração restrito ao ambiente local, Swagger e logs JSON sanitizados. A suíte contém 42 testes e mede 96,0% de cobertura combinada no último relatório `pytest-cov` (Python 3.11). A revisão do usuário ainda precede os testes de integração com runtime, RAG e OCR.
+
+**Entrega candidata:** API FastAPI com `POST /appointments`, SQLite persistente, identidade JWT, reconciliação idempotente por usuário e alocação globalmente exclusiva, testável sem o agente.
 
 ### 2.4 — Verificação transversal de privacidade
 
@@ -282,10 +315,22 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 | `vision.request.started` | OCR MCP / `vision_client` | INFO | — |
 | `vision.request.completed` | OCR MCP / `vision_client` | INFO | `duration_ms`, `outcome` |
 | `vision.request.failed` | OCR MCP / `vision_client` | ERROR | `duration_ms`, `error_code`, `error_type` |
+| `schedule.database.ready` | Schedule API / `persistence` | INFO | `duration_ms`, `outcome` |
+| `schedule.database.failed` | Schedule API / `persistence` | ERROR | `outcome`, `error_code`, `error_type` |
+| `schedule.database.stopped` | Schedule API / `persistence` | INFO | `outcome` |
+| `schedule.configuration.failed` | Schedule API / `configuration` | ERROR | `outcome`, `error_code`, `error_type` |
+| `schedule.request.started` | Schedule API / `http` | INFO | `outcome`, `request_id` |
+| `schedule.reconciliation.completed` | Schedule API / `application` | INFO | `outcome`, `request_id` |
+| `schedule.allocation.completed` | Schedule API / `application` | INFO | `outcome`, `request_id` |
+| `schedule.appointments.completed` | Schedule API / `appointments` | INFO | `duration_ms`, `outcome` |
+| `schedule.appointments.rejected` | Schedule API / `appointments` | WARNING | `duration_ms`, `outcome`, `error_code`, `error_type` |
+| `schedule.appointments.failed` | Schedule API / `persistence` | ERROR | `duration_ms`, `outcome`, `error_code`, `error_type` |
+| `schedule.request.rejected` | Schedule API / `http` | WARNING | `duration_ms`, `outcome`, `error_code`, `error_type` |
+| `schedule.request.failed` | Schedule API / `http` | ERROR | `duration_ms`, `outcome`, `error_code`, `error_type` |
 
-Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`. A allowlist permite somente `duration_ms`, `outcome`, `error_code` e `error_type` como atributos variáveis. A mensagem livre do logger, valores de imagem e resultado clínico não são serializados. Códigos como `input_image_unavailable`, `process_already_running`, `vision_timeout`, `vision_api_rejected`, `exam_layout_unrecognized` e `image_not_found` permitem localizar a classe da falha sem armazenar a mensagem original.
+Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`. A allowlist permite somente `request_id`, `duration_ms`, `outcome`, `error_code` e `error_type` como atributos variáveis. A mensagem livre do logger, valores de imagem e resultado clínico não são serializados. Códigos como `input_image_unavailable`, `process_already_running`, `vision_timeout`, `vision_api_rejected`, `exam_layout_unrecognized` e `image_not_found` permitem localizar a classe da falha sem armazenar a mensagem original.
 
-**Limite da instrumentação local (2026-10-04):** os eventos JSON permitem acompanhar as etapas dentro de cada serviço, mas ainda não há `trace_id` compartilhado entre runtime e OCR. A correlação distribuída será implementada junto dos spans OpenTelemetry e validada através do SSE; não criamos um identificador paralelo nesta etapa. O formatador mantém uma allowlist e descarta a mensagem livre do `LogRecord`, evitando que conteúdo arbitrário seja serializado.
+**Correlação:** a Schedule API gera um `request_id` por requisição, devolve-o em `X-Request-ID` e inclui-o nos eventos HTTP e de aplicação daquela chamada. Ele não é aceito do cliente. Isso correlaciona eventos dentro da Schedule API, mas não substitui um `trace_id` distribuído entre runtime, OCR MCP, RAG e Schedule API. A propagação distribuída fica para a instrumentação OpenTelemetry futura, incluindo validação pelo SSE. O formatador mantém uma allowlist e descarta a mensagem livre do `LogRecord`, evitando que conteúdo arbitrário seja serializado.
 
 **Critérios de aceite:** uma execução pode ser acompanhada do runtime até o Vision; falhas mostram a etapa e uma classificação técnica sem conteúdo sensível; a saída JSON do CLI não muda; a indisponibilidade do backend não falha o atendimento; e a busca nos dados coletados não encontra os marcadores sintéticos de PII, imagem ou credenciais.
 

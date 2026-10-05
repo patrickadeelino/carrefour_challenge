@@ -1,12 +1,12 @@
 # Especificação técnica — Fase 2
 
-**Estado:** a aprovação formal do escopo geral da Fase 2 continua aberta. As decisões desta fatia foram acordadas antes da implementação; o OCR da subfase 2.1 já está implementado e validado conforme esta especificação.
+**Estado:** esta especificação descreve a fatia de OCR e os limites compartilhados. O OCR da subfase 2.1 está implementado e validado; o RAG da 2.2 e a API independente de agendamento da 2.3 também estão implementados. A integração desses componentes ao agente fica para uma etapa posterior e aguarda a validação desta API.
 
 ## 1. Objetivo e escopo
 
 A Fase 2 conecta o agente `exam_scheduler` da Fase 1 aos serviços necessários para atender uma solicitação de exames: receber a imagem do pedido, identificar os exames, consultar o catálogo e solicitar um agendamento. O PRD descreve os requisitos do desafio; este documento detalha a arquitetura progressivamente, antes da implementação de cada subfase.
 
-O primeiro entregável é a fatia vertical de OCR: executar `process --path <nome-do-arquivo>` dentro do container, enviar a imagem ao OCR por meio do agente e apresentar os exames no CLI. Essa fatia foi implementada e validada. A pesquisa no catálogo e o agendamento continuam no escopo geral da Fase 2, mas seus contratos ainda não são especificados aqui.
+O primeiro entregável é a fatia vertical de OCR: executar `process --path <nome-do-arquivo>` dentro do container, enviar a imagem ao OCR por meio do agente e apresentar os exames no CLI. Essa fatia foi implementada e validada. Os contratos do catálogo e da API de agendamento estão detalhados nas respectivas etapas da [Fase 2](phase2-plan.md); a conexão deles ao agente permanece fora do fluxo implementado.
 
 Esta especificação é deliberadamente incremental. Requisitos futuros aparecem como contexto e permanecem em aberto até a subfase correspondente; não são autorização para implementá-los junto com a fatia OCR.
 
@@ -24,7 +24,7 @@ Esta especificação é deliberadamente incremental. Requisitos futuros aparecem
 | F2-08 | Reduzir a exposição de dados pessoais do paciente. | Barreira local no servidor MCP de OCR e runtime | Antes de responder, a barreira analisa os nomes que sairiam em `exams` e `ambiguous_exams`; ao detectar uma categoria configurada, suprime o resultado inteiro. Logs e erros são sanitizados. A detecção é limitada e não garante cobertura de toda PII. O original no diretório de entrada não é alterado nem apagado. |
 | F2-09 | Executar o fluxo localmente em containers. | Docker Compose | O comando é executado dentro do container; a imagem de entrada está visível pelo mount de workspace e o armazenamento temporário é compartilhado com o OCR em modo somente leitura. |
 
-Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs correspondentes e fluxo completo — são registrados no [PRD](PRD.md) e no [plano da Fase 2](phase2-plan.md). Os contratos dessas partes serão detalhados antes de suas implementações.
+Os requisitos mais amplos do desafio — catálogo/RAG, API de agendamento, MCPs correspondentes e fluxo completo — são registrados no [PRD](PRD.md) e no [plano da Fase 2](phase2-plan.md). As etapas 2.2 e 2.3 registram seus contratos, implementação independente, testes e limites atuais; a integração do agente permanece pendente.
 
 ## 3. Contratos do primeiro fluxo
 
@@ -181,15 +181,15 @@ Executar via Docker Compose `process --path <nome>` para as duas imagens de refe
 
 ## 7. Fases posteriores — somente visão geral
 
-Estas etapas pertencem à Fase 2, mas permanecem fora da implementação corrente:
+O catálogo/RAG da subfase 2.2 e a API independente de agendamento da 2.3 já
+estão implementados. A revisão da API pelo usuário antecede a integração entre
+componentes. O trabalho restante da Fase 2 é:
 
-1. **Catálogo e busca/RAG:** confirmar fonte, formato, critérios de busca e avaliação para o catálogo exigido.
-2. **API de agendamento:** especificar endpoints, modelos, disponibilidade e conflitos conforme o desafio.
-3. **Privacidade transversal:** verificar que API, busca, agente e logs preservam a fronteira definida no OCR.
-4. **Integração do agente:** ligar OCR, catálogo e agendamento e testar o fluxo com ferramentas locais e modelo determinístico.
-5. **Ambiente completo:** compor todos os serviços no Docker Compose e avaliar separadamente qualquer execução opcional com Gemini real.
+1. **Privacidade transversal:** verificar que API, busca, agente e logs preservam a fronteira definida no OCR.
+2. **Integração do agente:** ligar OCR, catálogo e agendamento e testar o fluxo com ferramentas locais e modelo determinístico.
+3. **Ambiente completo:** compor todos os serviços no Docker Compose e avaliar separadamente qualquer execução opcional com Gemini real.
 
-Cada etapa deve ter contratos e critérios detalhados antes de sua implementação. O [plano da Fase 2](phase2-plan.md) acompanha a ordem e o checklist.
+O [plano da Fase 2](phase2-plan.md) acompanha a ordem, as decisões e o checklist.
 
 ## 8. Referências
 

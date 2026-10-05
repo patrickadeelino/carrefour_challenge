@@ -1,6 +1,6 @@
 # Carrefour Challenge
 
-**Estado:** Fase 1 concluída; o fluxo OCR da subfase 2.1 passou pela validação ponta a ponta nas duas imagens de referência, e o RAG da subfase 2.2 já expõe busca do catálogo por MCP SSE.
+**Estado:** Fase 1 concluída; OCR e RAG estão disponíveis como serviços independentes. A API fictícia da subfase 2.3 já foi implementada e aguarda revisão antes dos testes de integração entre componentes.
 
 O projeto constrói um agente exam scheduler a partir de uma especificação declarativa. A Fase 1 valida o JSON e gera uma factory Python para o Google ADK. A Fase 2 prepara os serviços e integrações do fluxo de atendimento.
 
@@ -18,7 +18,7 @@ A geração produz código-fonte; não executa a factory nem inicia o agente. O 
 
 O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos durante uma nova gravação.
 
-O Docker Compose inicia o runtime, o servidor OCR e o RAG em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` carrega a factory gerada, envia somente o UUID da imagem ao agente e captura o resultado estruturado de `extract_exams` por SSE. O RAG expõe `search_exams` por SSE e resolve nomes no catálogo fictício; a integração entre o agente e o RAG e a API de agendamento continuam fora desta fatia.
+O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` carrega a factory gerada, envia somente o UUID da imagem ao agente e captura o resultado estruturado de `extract_exams` por SSE. O RAG expõe `search_exams` por SSE e resolve nomes no catálogo fictício. A API de agendamento persiste reservas em SQLite e ainda não está conectada ao agente.
 
 ## Documentação
 
@@ -32,6 +32,7 @@ O Docker Compose inicia o runtime, o servidor OCR e o RAG em containers independ
 - [Playbook de testes](docs/playbooks/testing.md): organização e execução das suítes nos containers.
 - [App runtime](apps/runtime/README.md): responsabilidades e limite do projeto Python executável.
 - [App RAG MCP](apps/rag_mcp/README.md): catálogo, busca, transporte SSE, logs e validações.
+- [Schedule API](apps/schedule_api/README.md): contrato HTTP, JWT local, DI, ciclo de vida do SQLite, logs, Swagger e testes.
 - [Handoff da Fase 1](docs/HANDOFF_FASE_1.md): decisões e contexto para continuidade.
 - [Exemplo de especificação](specification.json).
 
@@ -46,6 +47,9 @@ Python, uv e as dependências do projeto são instalados dentro da imagem. Não 
 
 ~~~sh
 docker compose up -d --build assistant-runtime ocr-mcp rag-mcp
+
+# A API de agendamento é iniciada quando você quiser validar seu contrato.
+docker compose up -d --build schedule-api
 ~~~
 
 Cada app é construído de forma independente a partir de sua própria pasta, com `pyproject.toml` e `uv.lock` próprios. O repositório é montado em `/workspace` no runtime para acessar `specification.json` e as imagens de demonstração. Os containers executam como usuário não root. Se o GID do grupo do host não for 1000, configure `CARREFOUR_RUNTIME_GID` no arquivo `.env` do projeto.
@@ -53,7 +57,7 @@ Cada app é construído de forma independente a partir de sua própria pasta, co
 O Compose principal constrói os alvos `dev`, com pytest, Ruff e Mypy disponíveis nos containers. Para construir e iniciar as imagens `runtime`, sem essas dependências, use o overlay:
 
 ~~~sh
-docker compose -f compose.yaml -f compose.runtime.yaml up -d --build assistant-runtime ocr-mcp rag-mcp
+docker compose -f compose.yaml -f compose.runtime.yaml up -d --build assistant-runtime ocr-mcp rag-mcp schedule-api
 ~~~
 
 Os alvos `runtime` e `dev` compartilham as camadas das dependências de produção; ferramentas de desenvolvimento são acrescentadas apenas ao alvo `dev`.
@@ -137,6 +141,20 @@ docker compose exec -w /workspace/apps/rag_mcp rag-mcp ruff check .
 docker compose exec -w /workspace/apps/rag_mcp rag-mcp ruff format --check .
 docker compose exec -w /workspace/apps/rag_mcp rag-mcp mypy
 ~~~
+
+Os testes e a análise estática da API de agendamento também rodam no container:
+
+~~~sh
+docker compose exec -w /workspace/apps/schedule_api schedule-api pytest -q
+docker compose exec -w /workspace/apps/schedule_api schedule-api pytest --cov --cov-report=term-missing
+docker compose exec -w /workspace/apps/schedule_api schedule-api ruff check .
+docker compose exec -w /workspace/apps/schedule_api schedule-api ruff format --check .
+docker compose exec -w /workspace/apps/schedule_api schedule-api mypy
+~~~
+
+Quando `schedule-api` estiver em execução, seu Swagger está disponível somente
+no host local em <http://localhost:8001/docs>. Consulte o README do app para
+emitir o JWT local de demonstração e testar o `POST /appointments`.
 
 ## E2E manual com Cloud Vision real
 
