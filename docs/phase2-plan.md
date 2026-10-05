@@ -24,7 +24,7 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 - [x] Registrar as regras de validação de PNG/JPG, limite de 10 MB, uso do UUID interno e limpeza em sucesso ou falha.
 - [x] Registrar o limite de privacidade: o agente recebe o `image_id`, o servidor OCR verifica os valores de saída com uma barreira local de PII e a imagem bruta não entra no contexto do LLM. O detector reduz risco, sem garantir cobertura universal.
 - [x] Definir a composição do agente gerado nesta fatia: tools controladas de stub para catálogo e agendamento, sem chamadas externas; instruções limitadas ao OCR.
-- [x] Implementar o componente reutilizável `TemporaryImageStore`, com validação, gravação atômica, resolução por UUID, exclusão e limpeza de órfãos; os testes unitários do componente estão presentes.
+- [x] Implementar o componente reutilizável `TemporaryImageStore`, com validação, gravação atômica sob UUID, exclusão e limpeza de órfãos; o OCR resolve o UUID diretamente como nome do arquivo no volume compartilhado.
 - [x] Configurar a base de desenvolvimento em Docker: dependências `dev`, workspace montado em `/workspace`, runtime não root e volume `tmpfs`; `docker compose config` foi validado.
 - [x] Organizar o runtime atual como app Python independente, com build, dependências, testes e documentação próprios; manter os materiais da POC na raiz.
 - [x] Atualizar o system design e manter rastreabilidade entre requisitos, componentes e testes.
@@ -293,7 +293,7 @@ Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`.
 
 **Decisão aprovada sobre o mapeamento:** não haverá `map.json` nesta etapa. O UUID é o nome do arquivo e permite resolução direta. O runtime/CLI remove a imagem ao final do fluxo, inclusive em caso de erro (`finally`); uma gravação também remove arquivos órfãos com mais de 30 minutos.
 
-**Controles de acesso implementados:** runtime/CLI com escrita no volume e servidor OCR com montagem somente leitura. Um lock entre processos impede atendimentos simultâneos; a rotina de limpeza remove arquivos órfãos com mais de 30 minutos.
+**Controles de acesso implementados:** runtime/CLI com escrita no volume e servidor OCR com montagem somente leitura. Um lock entre processos impede atendimentos simultâneos; uma nova gravação remove arquivos órfãos com mais de 30 minutos.
 
 **Motivo da decisão:** a imagem do pedido pode conter PII. Mantê-la no armazenamento temporário e passar ao agente apenas um `image_id` evita que os bytes da imagem entrem no contexto do modelo. O agente ainda chama a tool OCR; o OCR acessa a imagem, verifica localmente os valores extraídos e devolve a lista somente quando não reconhece PII nas categorias configuradas. Se reconhecer, suprime a lista inteira. Essa fronteira reduz a exposição, sem prometer detecção completa.
 
@@ -338,9 +338,9 @@ O desenho também evita introduzir GCS e credenciais cloud num desafio que exige
 
 ## Recepção e armazenamento temporário — componente implementado
 
-O componente `TemporaryImageStore` valida o conteúdo real da imagem, aceita PNG/JPG até 10 MB, grava os bytes sob um UUID sem extensão e resolve e remove arquivos somente por UUID canônico. A gravação usa arquivo temporário e promoção atômica; falhas não deixam artefatos parciais. O comando `process --path <nome>` agora conecta esse armazenamento ao fluxo ADK/MCP: o runtime lê somente arquivos regulares da pasta permitida, envia o UUID ao agente e remove a cópia temporária em `finally`. O arquivo original permanece intacto. Não há um comando público que apenas armazena imagens.
+O componente `TemporaryImageStore` valida o conteúdo real da imagem, aceita PNG/JPG até 10 MB e grava os bytes sob um UUID sem extensão. Ele remove arquivos pelo UUID canônico e resolve órfãos expirados durante cada nova gravação. A gravação usa arquivo temporário e promoção atômica; falhas não deixam artefatos parciais. O comando `process --path <nome>` conecta esse armazenamento ao fluxo ADK/MCP: o runtime lê somente arquivos regulares da pasta permitida, envia o UUID ao agente e remove a cópia temporária em `finally`; o servidor OCR resolve o UUID diretamente no volume compartilhado. O arquivo original permanece intacto. Não há um comando público que apenas armazena imagens.
 
-O `compose.yaml` mantém o serviço `assistant-runtime` em execução e monta o volume `image-storage` em `tmpfs` (64 MiB), gravável pelo runtime e somente para leitura pelo OCR. Os containers seguem como usuários não root (UID 10001). Uma gravação remove arquivos UUID com mais de 30 minutos; um lock estável em `/tmp` impede atendimentos simultâneos no runtime. Os testes unitários cobrem formatos, conteúdo inválido, limite, UUID, resolução, exclusão, limpeza e falha na promoção atômica.
+O `compose.yaml` mantém o serviço `assistant-runtime` em execução e monta o volume `image-storage` em `tmpfs` (64 MiB), gravável pelo runtime e somente para leitura pelo OCR. Os containers seguem como usuários não root (UID 10001). Cada nova gravação remove arquivos UUID com mais de 30 minutos; não há limpeza periódica. Um lock estável em `/tmp` impede atendimentos simultâneos no runtime. Os testes unitários cobrem formatos, conteúdo inválido, limite, UUID, escrita, exclusão, limpeza e falha na promoção atômica.
 
 ## Próximos passos acordados
 
@@ -360,7 +360,9 @@ O `compose.yaml` mantém o serviço `assistant-runtime` em execução e monta o 
 - [x] Introduzir `ImageId` e `ExamResult` no runtime; usar `ImageId`, `BoundingBox`, `ExamCode`, `ExamMark` e `OcrDocument` no OCR.
 - [x] Separar a decodificação da imagem e a classificação visual do checkbox em módulos dedicados.
 - [x] Espelhar a estrutura dos testes unitários com os serviços do runtime e compartilhar o fake e as fixtures Vision nos testes de transporte do OCR.
-- [x] Executar as suítes dos dois apps com cobertura, Ruff e format check, Mypy, `uv lock --check`, `docker compose config` e `git diff --check`; todos passaram. Runtime: 71 testes, 77,1% de cobertura; OCR MCP: 23 testes, 83,1%. O E2E manual não integra a cobertura padrão.
+- [x] Executar as suítes dos dois apps com cobertura, Ruff e format check, Mypy, `uv lock --check`, `docker compose config` e `git diff --check`; essa execução histórica da Fase 4 passou. Runtime: 102 testes; OCR MCP: 107 testes. O E2E manual não integra a cobertura padrão. Para os números e cobertura atuais, consultar a validação mais recente abaixo.
+
+**Validação mais recente do hardening (2026-10-05):** runtime — 109 testes, 91,4% de cobertura; OCR MCP — 107 testes, 96,1%. Ruff, formatação, Mypy, `uv lock --check`, `docker compose config --quiet`, build das duas imagens e `git diff --check` passaram. A suíte padrão não chama Vision nem Gemini; o E2E manual com Vision real está registrado acima e não integra a cobertura padrão.
 
 ## Princípios herdados da Fase 1
 

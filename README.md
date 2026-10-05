@@ -16,7 +16,7 @@ A geração produz código-fonte; não executa a factory nem inicia o agente. O 
 
 ## Estado da Fase 2
 
-O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos.
+O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos durante uma nova gravação.
 
 O Docker Compose inicia o runtime e o servidor OCR em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` passa a carregar a factory gerada, enviar somente o UUID da imagem ao agente e capturar o resultado estruturado de `extract_exams` por SSE. Catálogo e API de agendamento continuam fora desta fatia.
 

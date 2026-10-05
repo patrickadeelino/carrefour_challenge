@@ -20,7 +20,7 @@ Esta especificação é deliberadamente incremental. Requisitos futuros aparecem
 | F2-04 | Permitir que o agente acione OCR por uma tool aprovada. | Agente ADK e servidor MCP de OCR | O agente chama a tool de OCR com o UUID; o servidor resolve o arquivo dentro do diretório permitido. |
 | F2-05 | Extrair exames sem enviar a imagem a um LLM. | Servidor MCP e Google Cloud Vision | Vision recebe os bytes para OCR; Gemini ou outro modelo de linguagem não recebe a imagem original. A identificação de marcações é local, conforme a POC dos dois layouts de referência. |
 | F2-06 | Apresentar uma resposta estável no CLI. | CLI | Saída de sucesso em JSON no formato `{"exams": ["Hemograma completo"]}`; lista vazia é uma resposta válida. Todas as chaves JSON são em inglês. |
-| F2-07 | Apagar a cópia temporária ao fim do atendimento. | Runtime e `TemporaryImageStore` | Imagem removida no caminho de sucesso e no de erro; rotina de limpeza remove arquivos UUID órfãos com mais de 30 minutos. |
+| F2-07 | Apagar a cópia temporária ao fim do atendimento. | Runtime e `TemporaryImageStore` | Imagem removida no caminho de sucesso e no de erro; uma nova gravação remove arquivos UUID órfãos com mais de 30 minutos. |
 | F2-08 | Reduzir a exposição de dados pessoais do paciente. | Barreira local no servidor MCP de OCR e runtime | Antes de responder, a barreira analisa os nomes que sairiam em `exams` e `ambiguous_exams`; ao detectar uma categoria configurada, suprime o resultado inteiro. Logs e erros são sanitizados. A detecção é limitada e não garante cobertura de toda PII. O original no diretório de entrada não é alterado nem apagado. |
 | F2-09 | Executar o fluxo localmente em containers. | Docker Compose | O comando é executado dentro do container; a imagem de entrada está visível pelo mount de workspace e o armazenamento temporário é compartilhado com o OCR em modo somente leitura. |
 
@@ -98,8 +98,9 @@ As responsabilidades abaixo cobrem somente a fatia de OCR. A busca no catálogo 
 
 | Componente | Responsabilidade nesta fatia |
 |---|---|
-| CLI `process` | Resolver a entrada, coordenar o fluxo, exibir JSON e garantir limpeza em `finally`. |
-| `TemporaryImageStore` | Validar bytes, criar UUID, gravar atomicamente, resolver/remover por UUID e limpar órfãos. |
+| CLI `process` | Adaptar argumentos, compor o caso de uso, exibir o JSON de resultado e mapear o código de saída. |
+| `ProcessService` | Resolver e ler a entrada permitida, armazenar a cópia, chamar o executor ADK e garantir sua remoção em `finally`. |
+| `TemporaryImageStore` | Validar bytes, criar UUID, gravar atomicamente, remover por UUID e limpar órfãos durante uma nova gravação. |
 | Factory gerada em `agent.py` | Criar o agente a partir do mapa de tools aprovado, mantendo o contrato exato da Fase 1. |
 | Runtime de `process` | Fornecer as três tools exigidas pelo contrato da Fase 1: a tool MCP de OCR e stubs controlados para catálogo e agendamento. Os stubs informam que a capacidade não está implementada nesta fatia e não realizam chamadas externas. Na execução normal, usa o modelo definido pela especificação validada. |
 | Agente Google ADK | Nesta fatia, seguir instruções limitadas ao processamento OCR e orquestrar a tool aprovada via MCP sobre SSE. Não recebe os bytes nem um caminho arbitrário. Nos testes, seu modelo pode ser substituído por um modelo determinístico. |
@@ -117,12 +118,14 @@ O runtime é um app Python independente em `apps/runtime/`, com seu próprio `py
 - A imagem original é enviada ao Google Cloud Vision para reconhecimento de texto. Essa decisão usa as garantias documentadas do fornecedor registradas no [plano da Fase 2](phase2-plan.md); `tmpfs` reduz a retenção local, mas não significa que a imagem permaneça apenas nos containers.
 - A imagem original não é adicionada ao contexto do Gemini/LLM. O agente envia apenas o UUID à tool; o OCR retorna nomes de exames, nunca o texto integral do documento.
 - Antes de devolver a resposta, uma barreira local analisa todos os nomes que sairiam em `exams` e `ambiguous_exams`. Se reconhecer PII, suprime todo o resultado e retorna somente `{"status":"review_required","reason":"sensitive_data_detected"}`. Não mascara trechos nem preserva exames considerados limpos.
+- A barreira aceita somente os formatos de sucesso e revisão definidos nesta especificação, com os campos exatos e listas de strings; campos adicionais, tipos inválidos e estados desconhecidos são rejeitados. A resposta pública é reconstruída a partir de uma allowlist de campos.
+- Falhas técnicas na execução da tool são convertidas em mensagens genéricas e sanitizadas. Logs contêm somente classificação operacional estável; não incluem mensagem, traceback ou atributos livres da exceção.
 - A barreira usa Presidio local, modelo spaCy em português e recognizers configurados para nomes, e-mail, telefone brasileiro, CPF, CNPJ numérico e alfanumérico, RG e CNS. Se o detector não iniciar ou falhar durante a análise, a tool falha com mensagem técnica sanitizada; não há retorno alternativo sem verificação.
 - CPF e CNPJ são reconhecidos pelo formato sem exigir checksum válido: a leitura OCR pode alterar um dígito e tornar um identificador real inválido no checksum. Isso favorece revisão manual a liberar um possível documento, com o custo de eventuais bloqueios conservadores de strings numéricas semelhantes.
 - O detector reduz exposição, mas não garante identificar toda PII. O texto OCR bruto e os bytes da imagem permanecem dentro do processamento do OCR; logs e exceções não devem conter bytes, texto OCR, PII ou o UUID interno.
 - O modelo não escolhe caminho, URL, nome de arquivo, volume ou credencial. O servidor resolve somente um UUID canônico dentro do diretório configurado.
 - Não usar `map.json`; o UUID é o nome do arquivo e permite resolução direta sem varrer o diretório.
-- O arquivo é removido em `finally` tanto em sucesso como em falha. Uma limpeza adicional remove órfãos acima de 30 minutos.
+- O arquivo é removido em `finally` tanto em sucesso como em falha. Uma limpeza adicional remove órfãos acima de 30 minutos durante a gravação de uma nova imagem; não há processo periódico de limpeza.
 - A política acordada para a primeira versão é um atendimento por vez. O runtime impõe o limite com um lock entre processos, coberto por teste unitário.
 - Segredos e credenciais não entram na especificação JSON, na imagem Docker ou no Git. No Compose local, são injetados em tempo de execução a partir do `.env` ignorado pelo Git.
 
@@ -130,7 +133,7 @@ O runtime é um app Python independente em `apps/runtime/`, com seu próprio `py
 
 ### Testes automatizados
 
-- Testes unitários cobrem resolução segura do nome, validação de formato/tamanho, geração/resolução/exclusão do UUID, gravação atômica, erros e limpeza.
+- Testes unitários cobrem resolução/leitura segura da entrada, validação de formato/tamanho, geração e exclusão por UUID, gravação atômica, erros e limpeza. O OCR resolve o UUID diretamente como nome do arquivo no volume compartilhado.
 - Testes do servidor MCP simulam o Cloud Vision e validam argumentos, resposta `{"exams": [...]}`, bloqueio de PII e erros sem rede externa.
 - Testes unitários cobrem as categorias configuradas e regressões das duas fixtures; o falso positivo encontrado em nome de exame com dígito também permanece coberto. Os testes não comprovam cobertura universal de PII.
 - Testes do fluxo verificam que a tool recebe apenas o UUID, que a imagem é apagada em sucesso e erro, e que marcadores de PII bloqueados não aparecem na resposta, no CLI, em logs ou em erros.
