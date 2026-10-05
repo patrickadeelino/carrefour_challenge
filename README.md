@@ -27,6 +27,7 @@ O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de
 - [Especificação técnica da Fase 1](docs/phase1-spec.md): formato do JSON, validações, tools e geração determinística.
 - [System Design — arquitetura dos containers](docs/system-design.md): containers, integrações e fronteiras de confiança.
 - [Plano da Fase 2](docs/phase2-plan.md): decisões e checklist das próximas subfases.
+- [HOW TO VALIDATE](HOW_TO_VALIDATE.md): testes automatizados e roteiro manual E2E com observabilidade.
 - [Workflow de desenvolvimento](docs/playbooks/development-workflow.md): ciclo de mudança, revisão, validação e transparência no uso de IA.
 - [Playbook de logging](docs/playbooks/logging.md): eventos estruturados, 5 Ws e política de privacidade.
 - [Observabilidade local](docs/observability.md): OpenObserve, Collector, credenciais e comandos de operação.
