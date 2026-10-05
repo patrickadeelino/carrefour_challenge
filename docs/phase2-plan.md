@@ -1,8 +1,8 @@
 # Plano da Fase 2
 
-**Estado:** rascunho inicial de `phase2-spec.md` preparado para revisão. O armazenamento temporário e o runtime independente estão implementados. A implementação do fluxo OCR começa depois de revisar e aprovar a especificação.
+**Estado:** a aprovação formal do escopo geral em `phase2-spec.md` continua em revisão. A subfase 2.1 está implementada e validada: as duas execuções ponta a ponta com Cloud Vision real e modelo determinístico passaram, assim como as suítes automatizadas, análise estática, cobertura, locks e configuração do Compose. A revisão local do diff não encontrou pendências de aderência à especificação.
 
-**Regra de trabalho:** fechar e revisar a especificação da Fase 2 antes de continuar a implementação. Depois, avançar uma subfase por vez, validando o entregável e documentando as decisões.
+**Regra de trabalho:** revisar a especificação e os contratos antes de implementar cada componente; avançar uma etapa por vez, validar o entregável e documentar as decisões antes de prosseguir.
 
 ## Objetivo provisório
 
@@ -19,7 +19,8 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 - [x] Especificar o primeiro fluxo: comando `process --path <nome-do-arquivo>` recebe uma imagem e apresenta os exames extraídos no CLI.
 - [x] Definir a resolução inicial do nome na pasta montada no container: `/workspace/tests/fixtures/images`; aceitar somente o nome e restringir a resolução a essa pasta.
 - [x] Descrever a sequência entre CLI de runtime, armazenamento temporário, agente ADK, tool/MCP de OCR e resultado apresentado no CLI.
-- [ ] Fechar o contrato para timeout, retries e resposta de revisão manual; categorias de erros e resposta de sucesso estão documentadas no rascunho.
+- [x] Definir a política de concorrência: somente um processamento pode estar ativo por vez; a subfase 2.1 implementou e testou o lock entre processos.
+- [x] Definir que credenciais ficam fora da imagem Docker e do Git; a subfase 2.1 configurou a injeção em tempo de execução a partir do `.env` ignorado pelo Git.
 - [x] Registrar as regras de validação de PNG/JPG, limite de 10 MB, uso do UUID interno e limpeza em sucesso ou falha.
 - [x] Registrar o limite de privacidade: o agente recebe o `image_id`, o servidor OCR mascara PII e a imagem bruta não entra no contexto do LLM.
 - [x] Definir a composição do agente gerado nesta fatia: tools controladas de stub para catálogo e agendamento, sem chamadas externas; instruções limitadas ao OCR.
@@ -27,7 +28,7 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 - [x] Configurar a base de desenvolvimento em Docker: dependências `dev`, workspace montado em `/workspace`, runtime não root e volume `tmpfs`; `docker compose config` foi validado.
 - [x] Organizar o runtime atual como app Python independente, com build, dependências, testes e documentação próprios; manter os materiais da POC na raiz.
 - [x] Atualizar o system design e manter rastreabilidade entre requisitos, componentes e testes.
-- [ ] Revisar e aprovar a especificação e fechar as pendências técnicas antes de iniciar a próxima implementação.
+- [ ] Revisar e aprovar a especificação de escopo; as decisões operacionais ficam planejadas para a subfase 2.1.
 
 **Entregável:** `docs/phase2-spec.md` revisada e aprovada, com o escopo e os critérios da primeira fatia de implementação.
 
@@ -35,18 +36,78 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 
 **Objetivo:** entregar o primeiro fluxo utilizável de ponta a ponta: receber uma imagem pelo comando de runtime, executar o caminho OCR previsto e apresentar a lista de exames no CLI.
 
-- [ ] Implementar o comando de runtime `process --path <nome-do-arquivo>`, resolvendo o nome na pasta de entrada montada.
-- [ ] Validar o arquivo e armazená-lo no `TemporaryImageStore`, mantendo o UUID interno ao fluxo.
-- [ ] Implementar o servidor MCP de OCR via SSE, com acesso somente leitura ao volume compartilhado.
-- [ ] Fazer o OCR resolver a imagem pelo UUID e chamar o Google Cloud Vision `DOCUMENT_TEXT_DETECTION`.
-- [ ] Mascarar nomes, documentos e contatos no servidor OCR antes de retornar a lista de exames.
-- [ ] Ligar o fluxo ao agente ADK para que o agente acione a tool de OCR com o `image_id`; fornecer stubs controlados para catálogo e agendamento, conforme decidido na especificação.
-- [ ] Apresentar no CLI os exames no contrato acordado, inclusive o caso válido `{"exames": []}`.
-- [ ] Remover a imagem temporária em `finally`, tanto em sucesso quanto em erro.
-- [ ] Cobrir leitura e resolução do caminho, validação, contrato MCP, erros e limpeza com testes sem chamadas externas.
-- [ ] Criar e executar, de forma explícita e fora do CI, um teste ponta a ponta de integração com Cloud Vision real e modelo determinístico nas duas fixtures sintéticas; verificar resultado, integridade do original e limpeza do temporário.
+#### Etapa 1 — Estrutura e contrato do servidor
+
+- [x] Criar `apps/ocr_mcp` como app Python independente, com pacote `carrefour_ocr_mcp`, dependência MCP 2.x, lockfile e testes próprios.
+- [x] Expor a tool `extract_exams(image_id)`: validar UUID canônico, resolver a imagem somente no diretório configurado e passar seus bytes a um extrator injetado.
+- [x] Manter o resultado estruturado no contrato `{"exams": [...]}` e testar descoberta e chamada pela interface `Client` do SDK MCP em memória, sem rede.
+- [x] Testar UUID inválido e imagem ausente; nesses casos o extrator não é chamado e a resposta de erro não repete o valor recebido.
+- [x] Executar testes, análise estática e build isolado do pacote.
+
+#### Etapa 2 — Cliente Google Cloud Vision
+
+- [x] Implementar cliente REST assíncrono para `DOCUMENT_TEXT_DETECTION`, recebendo `GOOGLE_CLOUD_VISION_API_KEY` do ambiente de execução e enviando-a no header `X-Goog-Api-Key`.
+- [x] Usar timeout inicial de 60 segundos e não repetir chamadas automaticamente; medir chamadas reais antes de rever esses parâmetros.
+- [x] Testar payload, autenticação, timeout, resposta inválida e erros HTTP com cliente HTTP simulado, sem chamadas à nuvem.
+
+#### Nota para revisão futura — erros e política de retry
+
+A documentação consultada fornece sinais úteis para classificar falhas, mas não estabelece uma matriz de retry específica para o Cloud Vision. A resposta de status tem código e detalhes estruturados; a orientação geral do Google Cloud é tomar decisões pelo código/detalhes, sem depender do texto da mensagem, que pode mudar.
+
+| Sinal observado | Tratamento a avaliar depois das chamadas reais |
+|---|---|
+| Requisição inválida (`400`) ou credenciais/permissões incorretas (`401`/`403`) | Não repetir automaticamente; corrigir a requisição ou a configuração. |
+| Timeout, desconexão de rede ou serviço temporariamente indisponível (`503`) | Candidato a uma tentativa adicional limitada, com espera e prazo total definidos. Confirmar primeiro o comportamento observado e o impacto no fluxo. |
+| Limite de chamadas (`429` / `RESOURCE_EXHAUSTED`) | Não repetir imediatamente. Verificar os detalhes estruturados para distinguir limite temporário por janela de quota esgotada; só o primeiro pode se beneficiar de espera e nova tentativa. |
+| Campo `error` dentro da resposta de uma imagem | Não assumir que a resposta está totalmente vazia: o Vision documenta que pode haver anotações preenchidas junto com `error`. Definir se o OCR rejeita resultado parcial ou se há um tratamento específico antes de considerar retry. |
+
+Uma repetição é uma nova chamada de anotação; a decisão futura deve considerar latência, quota e possível custo duplicado. **Decisão vigente:** manter timeout de 60 segundos e nenhuma repetição automática. Rever esta nota após a validação ponta a ponta com Vision real, sem tratar a lista acima como política já implementada.
+
+Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cloud.google.com/vision/docs/reference/rest/v1/Status), [erros por imagem na resposta do Vision](https://docs.cloud.google.com/vision/docs/reference/rest/v1/AnnotateImageResponse), [orientação geral para erros de APIs Google Cloud](https://docs.cloud.google.com/apis/docs/troubleshooting) e [quotas do Cloud Vision](https://docs.cloud.google.com/vision/quotas).
+
+#### Etapa 3 — Extração e classificação local
+
+- [x] Organizar texto e coordenadas devolvidos pelo Vision e reconhecer somente os dois layouts sintéticos de referência.
+- [x] Usar Pillow para classificar cada checkbox como selecionado, não selecionado ou ambíguo; não inferir uma marca incerta.
+- [x] Confirmar os cinco exames da lista numerada e os seis marcados no formulário, incluindo testes de marca parcial e layout não reconhecido.
+- [x] Limitar a resposta aos nomes dos exames e não persistir nem registrar o texto OCR integral.
+
+#### Etapa 4 — Transporte SSE e Docker Compose
+
+- [x] Expor a tool pelo transporte HTTP+SSE exigido no desafio e manter o serviço na rede interna do Compose, sem publicar a porta no host.
+- [x] Montar o volume tmpfs compartilhado como somente leitura no container OCR e verificar leitura/escrita entre os containers.
+- [x] Testar descoberta e chamada com Vision simulado tanto em memória como pelo transporte SSE real.
+
+#### Etapa 5 — Integração com runtime e agente
+
+- [x] Implementar `process --path <nome-do-arquivo>` no runtime; aceitar somente o nome dentro de `/workspace/tests/fixtures/images` e rejeitar caminhos e links simbólicos.
+- [x] Validar e gravar a imagem no `TemporaryImageStore`, chamar o agente via ADK/MCP SSE e apagar a cópia em `finally`.
+- [x] Usar o modelo da especificação em execução normal e injetar um modelo determinístico nos testes, sem criar um modo de teste público no CLI.
+- [x] Capturar e serializar `structuredContent` da resposta de `extract_exams`, sem depender do texto final do modelo ou fazer uma segunda chamada Gemini.
+- [x] Fornecer stubs controlados para catálogo e agendamento, expor somente `extract_exams` do servidor OCR e impor um processamento por vez com lock entre processos.
+- [x] Validar resultados, mensagens sanitizadas, limpeza em sucesso e erro, imagem inválida, resposta ausente/malformada e falha do MCP em testes sem serviços externos.
+- [x] Injetar `GOOGLE_API_KEY` no runtime e `GOOGLE_CLOUD_VISION_API_KEY` no OCR somente em execução, fora das imagens Docker e do Git.
+- [x] Definir timeout inicial de 5 segundos para conectar ao MCP, 75 segundos para aguardar respostas SSE e 90 segundos para o fluxo no ADK; não repetir chamadas automaticamente.
+- [x] Retornar revisão manual com status distinto e exames ambíguos; usar código de saída 2 para revisão manual, 0 para sucesso e 1 para falhas técnicas.
+
+**Resultado:** o fluxo local usa `InMemoryRunner` do ADK com a conexão SSE e captura a resposta estruturada da tool. A bateria automatizada usa um servidor MCP local e modelo determinístico; não chama Gemini nem Cloud Vision. O Compose desativa a descoberta de certificados mTLS Google porque esta conexão MCP usa HTTP interno sem autenticação.
+
+**Timeouts observados:** o cliente REST do Vision mantém seu limite de 60 segundos. O runtime permite 5 segundos para descoberta/conexão MCP, 75 segundos de leitura SSE e 90 segundos para o turno ADK. Não há retries automáticos. As duas execuções reais terminaram em menos de cinco segundos no fluxo completo; como esse tempo não isola a latência do Vision e representa apenas duas amostras, mantemos os limites e a política sem retries.
+
+#### Etapa 6 — Validação ponta a ponta com Vision real
+
+- [x] Criar harness E2E manual e optativo no runtime, com modelo determinístico e servidor OCR/Vision reais.
+- [x] Executar explicitamente, fora do CI, o fluxo Compose nas duas imagens usando Cloud Vision real e modelo determinístico; não chamar Gemini.
+- [x] Conferir os exames e o JSON do CLI; a revisão visual confirmou a seleção esperada. O harness verificou os marcadores sintéticos de PII na saída e nos erros, a integridade do original e a remoção da cópia temporária. A inspeção manual dos logs do OCR no Compose encontrou apenas metadados de transporte/status, sem conteúdo da imagem ou dos exames.
+- [x] Verificar a rejeição de um segundo processamento simultâneo no teste unitário de `ProcessingLock`, sem fazer uma segunda chamada real ao Vision.
+- [x] Registrar a duração ponta a ponta e manter os timeouts e a política sem retries; as medições não isolam o tempo de resposta do Vision.
+- [x] Rever o tratamento de marcações ambíguas: as duas imagens não produziram casos ambíguos; permanece a resposta `review_required` para classificações incertas, coberta pelos testes locais.
 
 **Critério de aceite:** `process --path <nome>` executado via Docker Compose processa uma imagem da pasta montada, apresenta os exames extraídos no CLI e remove a imagem temporária ao concluir. Erros não exibem PII nem deixam a imagem armazenada após a finalização.
+
+**Registro E2E (2026-10-04):** `exam_request_pt_br.png` retornou cinco exames em 4,47 s; `exam_request_pt_br_simplified.png` retornou os seis exames marcados em 4,57 s. O usuário confirmou visualmente que a seleção corresponde às imagens. O E2E verificou que o modelo determinístico provocou uma única chamada à tool, que o prompt contém apenas o UUID, que a cópia temporária foi removida, que o arquivo original permaneceu intacto e que os marcadores sintéticos de PII não apareceram na saída ou nos erros. O Cloud Vision foi real; Gemini não foi chamado.
+
+**Nota de custo da validação:** a primeira tentativa em cada fixture usou uma imagem Docker desatualizada e chegou a chamar o Vision antes de falhar em uma asserção obsoleta do teste. Após reconstruir o runtime, as duas execuções passaram. As quatro tentativas desta sequência fizeram quatro chamadas ao Vision; esse número se refere a estes comandos, não ao histórico completo do container. Não repetir essas execuções sem necessidade.
 
 ### POC concluída: extração de exames nos dois layouts sintéticos
 
@@ -60,20 +121,11 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 
 **Limite da evidência:** são duas amostras sintéticas, com layouts conhecidos. A POC demonstra viabilidade para esses formatos; não valida formulários arbitrários, manuscritos ou outros tipos de marca. Na lista sem caixas, retornar todos depende da instrução contextual de que os exames listados devem ser realizados.
 
-**Artefatos da POC:** os scripts de exploração ficam em `scripts/vision_ocr.py`, `scripts/vision_exam_marks.py` e `scripts/validate_exam_selection.py`. O relatório executado está em `generated/vision-validation/report.json`.
+**Artefatos da POC:** os scripts de exploração e o relatório são mantidos localmente como referência e não fazem parte do repositório. Os resultados e limites foram resumidos acima; a subfase 2.1 reproduziu os dois casos nos testes locais e no E2E manual com Cloud Vision real.
 
-**Ordem de implementação acordada:** a recepção e o armazenamento temporário local precedem o servidor/tool de OCR. O componente interno já foi implementado; o caminho de entrada pelo comando de atendimento será conectado quando o OCR estiver disponível. A imagem é armazenada em `tmpfs` sob UUID e o OCR receberá somente esse ID. Veja a seção “Recepção e armazenamento temporário de imagem”.
+**Ordem de implementação acordada:** a recepção e o armazenamento temporário local precederam o servidor/tool de OCR. Essa ordem foi seguida: `TemporaryImageStore` recebe a cópia em `tmpfs` sob UUID e `process` envia somente esse ID ao servidor OCR. O fluxo está implementado e foi validado na subfase 2.1; veja a seção “Recepção e armazenamento temporário de imagem”.
 
-### 2.2 — API de agendamento
-
-- [ ] Definir endpoints e modelos de dados conforme o enunciado.
-- [ ] Implementar regras de disponibilidade e conflito de horários.
-- [ ] Cobrir casos válidos, inválidos e de erro.
-- [ ] Documentar a API e sua configuração local.
-
-**Entrega candidata:** API FastAPI testável sem o agente.
-
-### 2.3 — Catálogo de exames e busca
+### 2.2 — Catálogo de exames e busca
 
 - [ ] Confirmar fonte, formato e volume do catálogo exigido.
 - [ ] Preparar e validar os dados do catálogo.
@@ -83,6 +135,14 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 
 **Entrega candidata:** busca de exames disponível ao agente por uma interface documentada.
 
+### 2.3 — API de agendamento
+
+- [ ] Definir endpoints e modelos de dados conforme o enunciado.
+- [ ] Implementar regras de disponibilidade e conflito de horários.
+- [ ] Cobrir casos válidos, inválidos e de erro.
+- [ ] Documentar a API e sua configuração local.
+
+**Entrega candidata:** API FastAPI testável sem o agente.
 
 ### 2.4 — Verificação transversal de privacidade
 
@@ -106,33 +166,98 @@ Preparar os serviços e as integrações que permitirão ao agente `exam_schedul
 ### 2.6 — Ambiente local e validação ponta a ponta
 
 - [x] Configurar a base do runtime no Docker Compose, montar o workspace e declarar o volume `tmpfs`.
-- [ ] Adicionar e configurar os serviços necessários para o fluxo completo, incluindo o mount somente leitura do volume no OCR.
-- [ ] Manter configuração de ambiente fora da especificação JSON do agente.
-- [ ] Executar o fluxo ponta a ponta com serviços locais.
-- [ ] Documentar como iniciar e verificar o ambiente.
+- [ ] Compor no Docker Compose os serviços já implementados nas subfases anteriores para a demonstração completa; o serviço OCR e seu mount somente leitura são entregues na subfase 2.1.
+- [ ] Executar o fluxo completo com serviços locais após a entrega de OCR, catálogo e agendamento.
+- [ ] Documentar como iniciar e verificar o ambiente completo.
 - [ ] Avaliar teste opcional com Gemini real, credenciais configuradas e chamadas externas.
 
 **Entrega candidata:** demonstração local reproduzível; integração com modelo real claramente identificada como opcional ou obrigatória conforme o desafio.
+
+### 2.7 — Observabilidade do fluxo
+
+**Objetivo:** tornar uma execução rastreável entre o CLI/runtime, o transporte MCP por SSE, o serviço OCR e a chamada ao Cloud Vision, sem registrar imagem, dados pessoais ou conteúdo clínico.
+
+**Decisão aprovada para o ambiente local:** usar OpenTelemetry como padrão de instrumentação e um OpenTelemetry Collector como ponto de recepção/exportação OTLP. Para visualizar e armazenar localmente os sinais, usar OpenObserve OSS em modo single-node. O Compose terá esses componentes como serviços opcionais do ambiente de desenvolvimento; a interface web ficará acessível somente pelo host local. A persistência de telemetria usará volume próprio, separado do `tmpfs` de imagens. Esta decisão descreve a stack local do projeto, não um dimensionamento de produção. Registrar e revisar a licença AGPL-3.0 do OpenObserve antes de qualquer distribuição do stack.
+
+**Princípios de instrumentação:**
+
+- Manter o JSON de resultado como única saída de sucesso em `stdout`; logs operacionais estruturados seguem para `stderr` e para o pipeline de telemetria.
+- Fazer a execução continuar se o Collector ou o OpenObserve estiver indisponível; telemetria não pode impedir nem alterar o processamento.
+- Correlacionar logs e spans pelo `trace_id`, sem usar imagem, nome de arquivo ou dado do paciente como identificador.
+- Aplicar os 5 Ws como perguntas para cada evento: quando (`timestamp`), quem (`service`), o quê (`event`), onde (`component`) e resultado/motivo (`outcome`, `error_code`, `error_type`). O `level` indica severidade.
+- Instrumentar fronteiras importantes do fluxo; não adicionar eventos a cada função ou iteração. Cada limite registra apenas o contexto operacional que sua camada conhece.
+- Aplicar allowlist de atributos. Não registrar bytes ou caminho da imagem, `image_id`, nome/resultado de exame, texto OCR, prompt, chave ou cabeçalho de autenticação, payload da Vision, nem resposta bruta de erro que possa conter esses dados.
+- Registrar apenas metadados operacionais necessários, como componente, etapa, resultado, duração, classe/código técnico de erro e contagem agregada de exames quando essa contagem não permitir reconstruir conteúdo clínico.
+- Sanitizar mensagens de erro na fronteira do CLI; detalhes internos devem ser classificados e filtrados antes de serem exportados.
+
+#### Etapas propostas
+
+- [x] Definir o catálogo inicial de eventos de log, níveis, códigos de erro e allowlist de atributos.
+- [x] Padronizar logs JSON nos dois apps. Os registros operacionais são emitidos em `stderr`, preservando `stdout` exclusivamente para o JSON de resultado do CLI. `docker compose exec` encaminha ambos os canais ao terminal; a retenção por `docker compose logs` vale para o processo principal do container, não deve ser presumida para comandos `exec`.
+- [x] Revisar os eventos com os 5 Ws, incluir `component`, classificar falhas com códigos estáveis, medir duração das etapas principais e testar que conteúdo livre e dados sensíveis não entram nos logs.
+- [ ] Instrumentar o runtime com um span raiz de `process` e spans para validação/leitura da imagem, armazenamento, execução ADK, chamada MCP e limpeza. Registrar resultado e duração sem anexar dados clínicos.
+- [ ] Instrumentar o OCR com spans para entrada da tool, resolução por UUID, chamada HTTPX ao Vision, decodificação e extração local. Instrumentar as requisições Starlette e HTTPX onde isso não duplicar spans; verificar a propagação do contexto pelo transporte SSE do SDK MCP.
+- [ ] Se o SDK ou o transporte SSE não propagar contexto de trace entre cliente e servidor, escolher e documentar uma correlação segura entre serviços antes de implementar um identificador alternativo; não reutilizar o `image_id` para isso.
+- [ ] Adicionar OpenTelemetry Collector e OpenObserve OSS ao Compose local, com configuração OTLP, persistência separada das imagens e publicação da UI apenas em loopback. Segredos e credenciais de acesso à UI ficam em ambiente local, fora da imagem e do Git.
+- [ ] Testar instrumentação com exporters em memória e sem depender do backend. Cobrir sucesso, falhas de Vision/MCP, limpeza e indisponibilidade do Collector; confirmar spans pai/filho ou a correlação alternativa aprovada.
+- [ ] Fazer uma execução manual via Compose e conferir no backend os logs e spans de ponta a ponta. Incluir marcadores sintéticos de PII e verificar que nenhum aparece em logs, atributos, eventos ou exceções exportadas.
+- [ ] Documentar como subir, acessar, desligar e limpar a stack local, incluindo retenção e remoção do volume de telemetria.
+
+#### Catálogo local de eventos
+
+| Evento | Emissor / componente | Nível | Campos específicos |
+|---|---|---|---|
+| `process.started` | Runtime / `process_service` | INFO | — |
+| `process.lock.rejected` | Runtime / `processing_lock` | WARNING | `error_code`, `error_type` |
+| `process.image.stored` | Runtime / `temporary_image_store` | INFO | `duration_ms` |
+| `process.ocr.started` | Runtime / `ocr_executor` | INFO | — |
+| `process.ocr.completed` | Runtime / `ocr_executor` | INFO ou WARNING | `duration_ms`, `outcome` |
+| `process.image_cleanup.completed` | Runtime / `temporary_image_store` | INFO | `outcome` |
+| `process.image_cleanup.failed` | Runtime / `temporary_image_store` | ERROR | `error_code`, `error_type` |
+| `process.completed` | Runtime / `process_service` | INFO ou WARNING | `duration_ms`, `outcome` |
+| `process.failed` | Runtime / componente da falha | WARNING ou ERROR | `duration_ms`, `error_code`, `error_type` |
+| `process.configuration_failed` | Runtime / `cli` | ERROR | `error_code` |
+| `ocr.configuration.failed` | OCR MCP / componente de configuração | ERROR | `error_code`, `error_type` |
+| `ocr.tool.started` | OCR MCP / `mcp_tool` | INFO | — |
+| `ocr.image.resolved` | OCR MCP / `image_access` | INFO | `duration_ms` |
+| `ocr.extraction.started` | OCR MCP / `exam_extractor` | INFO | — |
+| `ocr.extraction.completed` | OCR MCP / `exam_extractor` | INFO ou WARNING | `duration_ms`, `outcome` |
+| `ocr.tool.completed` | OCR MCP / `exam_extractor` | INFO ou WARNING | `duration_ms`, `outcome` |
+| `ocr.tool.rejected` | OCR MCP / `image_access` | WARNING | `duration_ms`, `error_code`, `error_type` |
+| `ocr.tool.failed` | OCR MCP / componente da falha | ERROR | `duration_ms`, `error_code`, `error_type` |
+| `vision.request.started` | OCR MCP / `vision_client` | INFO | — |
+| `vision.request.completed` | OCR MCP / `vision_client` | INFO | `duration_ms`, `outcome` |
+| `vision.request.failed` | OCR MCP / `vision_client` | ERROR | `duration_ms`, `error_code`, `error_type` |
+
+Todos os eventos incluem `timestamp`, `level`, `service`, `event` e `component`. A allowlist permite somente `duration_ms`, `outcome`, `error_code` e `error_type` como atributos variáveis. A mensagem livre do logger, valores de imagem e resultado clínico não são serializados. Códigos como `input_image_unavailable`, `process_already_running`, `vision_timeout`, `vision_api_rejected`, `exam_layout_unrecognized` e `image_not_found` permitem localizar a classe da falha sem armazenar a mensagem original.
+
+**Limite da instrumentação local (2026-10-04):** os eventos JSON permitem acompanhar as etapas dentro de cada serviço, mas ainda não há `trace_id` compartilhado entre runtime e OCR. A correlação distribuída será implementada junto dos spans OpenTelemetry e validada através do SSE; não criamos um identificador paralelo nesta etapa. O formatador mantém uma allowlist e descarta a mensagem livre do `LogRecord`, evitando que conteúdo arbitrário seja serializado.
+
+**Critérios de aceite:** uma execução pode ser acompanhada do runtime até o Vision; falhas mostram a etapa e uma classificação técnica sem conteúdo sensível; a saída JSON do CLI não muda; a indisponibilidade do backend não falha o atendimento; e a busca nos dados coletados não encontra os marcadores sintéticos de PII, imagem ou credenciais.
+
+**Fora da primeira entrega:** dashboards operacionais elaborados, alertas, métricas de negócio e implantação em produção. Primeiro estabilizar nomes, cardinalidade, propagação e política de privacidade; depois decidir quais métricas e painéis são úteis. Para métricas, preferir instrumentos e exportação estáveis do OpenTelemetry. A API de Logs do OpenTelemetry para Python está marcada como *Development* na documentação atual; encapsular a integração de logs para permitir revisão sem acoplar os apps a detalhes experimentais do SDK.
+
+**Referências oficiais:** [OpenTelemetry Python](https://opentelemetry.io/docs/languages/python/) (status dos sinais), [instrumentação Python](https://opentelemetry.io/docs/languages/python/instrumentation/), [instrumentação HTTPX](https://opentelemetry-python-contrib.readthedocs.io/en/latest/instrumentation/httpx/httpx.html), [instrumentação Starlette](https://opentelemetry-python-contrib.readthedocs.io/en/latest/instrumentation/starlette/starlette.html), [arquitetura single-node do OpenObserve](https://openobserve.ai/docs/architecture/), [ingestão OTLP de logs no OpenObserve](https://openobserve.ai/docs/reference/api/ingestion/logs/otlp/), [ingestão de traces no OpenObserve](https://openobserve.ai/docs/ingestion/traces/) e [repositório/licença do OpenObserve](https://github.com/openobserve/openobserve).
 
 ## Nota da discussão: referência da imagem para a tool de OCR
 
 **Validação técnica:** a analogia com armazenamento de objetos (como S3 ou Cloud Storage) é válida, mas gerar um ID sozinho não faz upload nem concede acesso ao arquivo. Um componente de entrada precisa receber a imagem, registrá-la sob uma referência opaca e permitir que o serviço de OCR a recupere com autorização. O ID é uma referência, não uma credencial de autorização.
 
-**Decisão aprovada para este desafio:** manter o modelo todo local e conteinerizado, sem GCS/S3, usando um volume compartilhado em `tmpfs`. O runtime/CLI registra a imagem no volume com um nome UUID vinculado à solicitação ativa. O agente chama a tool MCP de OCR via SSE com esse ID. O OCR valida o UUID e abre diretamente o arquivo correspondente no diretório permitido; não varre o diretório nem aceita caminhos ou URLs arbitrários fornecidos pelo modelo. O OCR mascara PII e retorna `{"exames": ["..."]}`.
+**Decisão aprovada para este desafio:** manter o modelo todo local e conteinerizado, sem GCS/S3, usando um volume compartilhado em `tmpfs`. O runtime/CLI registra a imagem no volume com um nome UUID vinculado à solicitação ativa. O agente chama a tool MCP de OCR via SSE com esse ID. O OCR valida o UUID e abre diretamente o arquivo correspondente no diretório permitido; não varre o diretório nem aceita caminhos ou URLs arbitrários fornecidos pelo modelo. O OCR mascara PII e retorna `{"exams": ["..."]}`.
 
-**Decisão aprovada sobre o mapeamento:** não haverá `map.json` nesta etapa. O UUID é o nome do arquivo e permite resolução direta. O runtime/CLI remove a imagem ao final do fluxo, inclusive em caso de erro (`finally`); arquivos órfãos poderão ser removidos por uma rotina de limpeza baseada na idade do arquivo.
+**Decisão aprovada sobre o mapeamento:** não haverá `map.json` nesta etapa. O UUID é o nome do arquivo e permite resolução direta. O runtime/CLI remove a imagem ao final do fluxo, inclusive em caso de erro (`finally`); uma gravação também remove arquivos órfãos com mais de 30 minutos.
 
-**Controles de acesso propostos:** runtime/CLI com escrita no volume; servidor OCR com leitura. A política exata para limpeza de solicitações abandonadas será fechada na implementação.
+**Controles de acesso implementados:** runtime/CLI com escrita no volume e servidor OCR com montagem somente leitura. Um lock entre processos impede atendimentos simultâneos; a rotina de limpeza remove arquivos órfãos com mais de 30 minutos.
 
 **Motivo da decisão:** a imagem do pedido pode conter PII. Mantê-la no armazenamento temporário e passar ao agente apenas um `image_id` evita que os bytes da imagem entrem no contexto do modelo. O agente ainda chama a tool OCR; o OCR acessa a imagem, mascara os dados pessoais e devolve somente a lista de exames. Essa fronteira reduz a exposição de PII ao modelo sem retirar do agente a orquestração da tool.
 
 O desenho também evita introduzir GCS e credenciais cloud num desafio que exige a solução conteinerizada com Docker Compose. Se futuramente o runtime estiver no GCP, o mesmo contrato pode apontar para um objeto privado no Cloud Storage; o serviço de entrada controla o upload e o OCR acessa o objeto por identidade de serviço ou autorização temporária. Uma URL assinada não deve ser tratada como um ID comum: quem a possui pode usá-la enquanto válida.
 
-**Estado:** tmpfs compartilhado, UUID como nome do arquivo e resolução direta sem `map.json` estão aprovados. A política concreta para limpeza de arquivos órfãos será definida na implementação.
+**Estado:** tmpfs compartilhado, UUID como nome do arquivo e resolução direta sem `map.json` estão implementados. Arquivos órfãos com mais de 30 minutos são removidos durante uma gravação.
 
 ### Decisão aprovada: Google ADK e Cloud Vision para OCR
 
-**Decisão:** usar o Google ADK para construir e executar o agente e o Google Cloud Vision `DOCUMENT_TEXT_DETECTION` como backend de OCR, chamado pelo servidor MCP de OCR. O ADK é a camada do agente; o Vision é o serviço de reconhecimento de texto. A interface do MCP continua recebendo o `image_id` e retornando somente `{"exames": [...]}`.
+**Decisão:** usar o Google ADK para construir e executar o agente e o Google Cloud Vision `DOCUMENT_TEXT_DETECTION` como backend de OCR, chamado pelo servidor MCP de OCR. O ADK é a camada do agente; o Vision é o serviço de reconhecimento de texto. A interface do MCP continua recebendo o `image_id` e retornando somente `{"exams": [...]}`.
 
 **Motivos:**
 
@@ -167,14 +292,29 @@ O desenho também evita introduzir GCS e credenciais cloud num desafio que exige
 
 ## Recepção e armazenamento temporário — componente implementado
 
-O componente interno `TemporaryImageStore` valida o conteúdo real da imagem, aceita PNG/JPG até 10 MB, grava os bytes sob um UUID sem extensão e resolve e remove arquivos somente por UUID canônico. A gravação usa arquivo temporário e promoção atômica; falhas não deixam artefatos parciais. Ele ainda não está conectado ao comando de atendimento e não expõe um comando público para armazenar imagens isoladamente. Os testes unitários do componente cobrem formatos, conteúdo inválido, limite configurável, UUID, resolução, exclusão, limpeza e falha durante promoção atômica.
+O componente `TemporaryImageStore` valida o conteúdo real da imagem, aceita PNG/JPG até 10 MB, grava os bytes sob um UUID sem extensão e resolve e remove arquivos somente por UUID canônico. A gravação usa arquivo temporário e promoção atômica; falhas não deixam artefatos parciais. O comando `process --path <nome>` agora conecta esse armazenamento ao fluxo ADK/MCP: o runtime lê somente arquivos regulares da pasta permitida, envia o UUID ao agente e remove a cópia temporária em `finally`. O arquivo original permanece intacto. Não há um comando público que apenas armazena imagens.
 
-O `compose.yaml` mantém o serviço `assistant-runtime` em execução e monta o volume `image-storage` em `tmpfs` (64 MiB), gravável pelo runtime. O container segue como usuário não root (UID 10001). Quando o OCR for implementado, ele deverá montar o volume temporário somente para leitura. A integração futura enviará os bytes da imagem ao runtime e usará o `image_id` internamente; o fluxo de atendimento será responsável por remover a imagem em `finally`. Uma gravação remove arquivos UUID com mais de 30 minutos. A primeira versão assume um atendimento por vez.
+O `compose.yaml` mantém o serviço `assistant-runtime` em execução e monta o volume `image-storage` em `tmpfs` (64 MiB), gravável pelo runtime e somente para leitura pelo OCR. Os containers seguem como usuários não root (UID 10001). Uma gravação remove arquivos UUID com mais de 30 minutos; um lock estável em `/tmp` impede atendimentos simultâneos no runtime. Os testes unitários cobrem formatos, conteúdo inválido, limite, UUID, resolução, exclusão, limpeza e falha na promoção atômica.
 
 ## Próximos passos acordados
 
-1. [ ] Revisar `docs/phase2-spec.md` e fechar as decisões pendentes antes de aprová-la.
-2. [ ] Após aprovar a especificação, implementar a fatia OCR de ponta a ponta: imagem pelo `process --path`, armazenamento temporário, OCR e exames apresentados no CLI.
+1. [ ] Revisar e aprovar `docs/phase2-spec.md`; as decisões operacionais da primeira fatia já foram fechadas durante a implementação.
+2. [x] Criar `apps/ocr_mcp`, contrato `extract_exams(image_id)` e testes MCP em memória.
+3. [x] Implementar o cliente REST do Vision com chave de execução e testes HTTP simulados.
+4. [x] Reconhecer os dois layouts de referência e classificar as marcações localmente, incluindo respostas de revisão manual.
+5. [x] Expor o servidor OCR por SSE no Compose, com o volume temporário somente para leitura.
+6. [x] Integrar `process` ao agente ADK e ao MCP OCR; cobrir com modelo determinístico e servidor SSE local, sem chamadas a serviços Google.
+7. [ ] Executar a validação ponta a ponta das duas imagens com Cloud Vision real e modelo determinístico; rever latência, privacidade e limpeza.
+
+### Refatoração transversal — responsabilidades, contratos e testes
+
+- [x] Agrupar os casos de uso do runtime em `services/generate/`, `services/process/` e `services/image_storage/`; manter o CLI como adaptador de entrada.
+- [x] Separar o registro de tools ADK da leitura de eventos MCP/SSE para manter a execução focada na coordenação do agente.
+- [x] Manter o `finally` focado na chamada a `delete_image(image_id)` e preservar erro composto e sanitizado quando processamento e limpeza falharem.
+- [x] Introduzir `ImageId` e `ExamResult` no runtime; usar `ImageId`, `BoundingBox`, `ExamCode`, `ExamMark` e `OcrDocument` no OCR.
+- [x] Separar a decodificação da imagem e a classificação visual do checkbox em módulos dedicados.
+- [x] Espelhar a estrutura dos testes unitários com os serviços do runtime e compartilhar o fake e as fixtures Vision nos testes de transporte do OCR.
+- [x] Executar as suítes dos dois apps com cobertura, Ruff e format check, Mypy, `uv lock --check`, `docker compose config` e `git diff --check`; todos passaram. Runtime: 71 testes, 77,1% de cobertura; OCR MCP: 23 testes, 83,1%. O E2E manual não integra a cobertura padrão.
 
 ## Princípios herdados da Fase 1
 
