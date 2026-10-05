@@ -3,6 +3,40 @@ name: carrefour-challenge
 
 # Declara os containers que compõem esta etapa do projeto.
 services:
+  # Servidor MCP que identifica exames por OCR; não publica porta no host.
+  ocr-mcp:
+    # Constrói a imagem somente com o projeto independente apps/ocr_mcp.
+    build:
+      # Limita o contexto de build aos arquivos deste app.
+      context: ./apps/ocr_mcp
+      # Usa o Dockerfile localizado dentro do contexto OCR.
+      dockerfile: Dockerfile
+      # Disponibiliza somente a biblioteca compartilhada além do app.
+      additional_contexts:
+        observability: ./packages/carrefour_observability
+    # Encaminha sinais ao processo principal e recolhe processos filhos.
+    init: true
+    # Configurações de ambiente usadas pelo servidor OCR.
+    environment:
+      # Diretório interno em que o runtime grava as imagens temporárias.
+      CARREFOUR_IMAGE_STORAGE_PATH: /var/run/carrefour/images
+      # Host aceito pelo middleware contra DNS rebinding na rede Compose.
+      CARREFOUR_OCR_ALLOWED_HOSTS: ocr-mcp:8000
+      # Injeta a credencial em execução; a variável não é copiada para a imagem.
+      GOOGLE_CLOUD_VISION_API_KEY: ${GOOGLE_CLOUD_VISION_API_KEY:-}
+    # Monta os arquivos temporários com as permissões mínimas para o OCR.
+    volumes:
+      # Permite ao OCR ler as imagens, sem criar ou apagar arquivos no volume.
+      - type: volume
+        # Reutiliza o mesmo volume tmpfs gravado pelo runtime.
+        source: image-storage
+        # Caminho do armazenamento temporário dentro do container OCR.
+        target: /var/run/carrefour/images
+        # Impede que o servidor OCR altere o volume compartilhado.
+        read_only: true
+    # Reinicia o serviço após falha ou reinício do Docker, salvo parada manual.
+    restart: unless-stopped
+
   # Runtime da aplicação; o serviço fica ligado para receber comandos via exec.
   assistant-runtime:
     # Constrói a imagem a partir do projeto independente apps/runtime.
@@ -11,6 +45,9 @@ services:
       context: ./apps/runtime
       # Usa o Dockerfile localizado dentro do contexto do runtime.
       dockerfile: Dockerfile
+      # Disponibiliza somente a biblioteca compartilhada além do app.
+      additional_contexts:
+        observability: ./packages/carrefour_observability
     # Compartilha o grupo do host para permitir escrita nos arquivos do projeto montado.
     group_add:
       - "${CARREFOUR_RUNTIME_GID:-1000}"
@@ -24,6 +61,10 @@ services:
     environment:
       # Caminho do armazenamento temporário de imagens no runtime.
       CARREFOUR_IMAGE_STORAGE_PATH: /var/run/carrefour/images
+      # Injeta a chave da Gemini somente quando o runtime é executado.
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      # Desativa a descoberta de certificados, desnecessária para SSE interno em HTTP.
+      GOOGLE_API_USE_CLIENT_CERTIFICATE: "false"
     # Montagens persistentes ou compartilhadas do serviço.
     volumes:
       # Dá ao runtime acesso de escrita ao volume temporário compartilhado.

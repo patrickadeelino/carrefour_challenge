@@ -3,18 +3,17 @@ requires = ["uv_build>=0.12.20,<0.13"]
 build-backend = "uv_build"
 
 [project]
-name = "carrefour-runtime"
+name = "carrefour-ocr-mcp"
 version = "0.1.0"
-description = "Runtime CLI do Carrefour Challenge"
+description = "Servidor MCP de OCR do Carrefour Challenge"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "carrefour-observability",
-    "google-adk[mcp]>=2.9.2,<3",
-    "google-genai>=2.25.0",
+    "httpx>=0.27,<1",
     "mcp>=2,<3",
-    "pillow>=11,<13",
-    "pydantic>=2,<3",
+    "pillow>=10,<13",
+    "uvicorn>=0.34,<1",
 ]
 
 [tool.uv.sources]
@@ -27,12 +26,11 @@ testpaths = [
     "../../packages/carrefour_observability/tests",
 ]
 addopts = "-ra"
-pythonpath = ["src", "tests"]
-markers = ["e2e: fluxo manual com chamada real ao Cloud Vision"]
+pythonpath = ["src"]
 
 [tool.coverage.run]
 branch = true
-source = ["carrefour_runtime"]
+source = ["carrefour_ocr_mcp"]
 
 [tool.coverage.report]
 show_missing = true
@@ -51,7 +49,7 @@ max-complexity = 8
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src/carrefour_runtime"]
+files = ["src/carrefour_ocr_mcp"]
 strict = true
 warn_unused_configs = true
 show_error_codes = true
