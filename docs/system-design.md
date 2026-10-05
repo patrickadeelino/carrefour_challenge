@@ -32,48 +32,57 @@ Os critérios detalhados de validação, erros, formatos e respostas estão nas 
 
 ```mermaid
 flowchart LR
-    subgraph Host["Host"]
-        Operator["Operador"]
-        Workspace["Workspace<br/>specification.json · imagens · generated/"]
-    end
-
     subgraph Compose["Docker Compose · rede interna"]
-        Runtime["assistant-runtime<br/>CLI · agente gerado · Google ADK"]
-        TempStore[("image-storage<br/>tmpfs · 64 MiB")]
-        OCR["ocr-mcp<br/>servidor MCP · extractors locais"]
-        RAG["rag-mcp<br/>servidor MCP · catálogo em memória"]
-        Schedule["schedule-api<br/>FastAPI · JWT · SQLAlchemy"]
-        ScheduleDB[("schedule-database<br/>volume persistente")]
+        direction TB
 
-        subgraph Observability["Observabilidade · mesma rede Compose"]
-            Collector["otel-collector<br/>OTLP/HTTP · porta 4318"]
+        subgraph Applications["Serviços da aplicação"]
+            direction LR
+            Runtime["assistant-runtime<br/>CLI · Google ADK"]
+            OCR["ocr-mcp<br/>MCP · extração local"]
+            RAG["rag-mcp<br/>MCP · catálogo em memória"]
+
+            subgraph Scheduling["Agendamento"]
+                direction TB
+                Schedule["schedule-api<br/>FastAPI · JWT · SQLAlchemy"]
+                ScheduleDB[("schedule-database<br/>SQLite · volume persistente")]
+                Schedule -->|"SQLAlchemy"| ScheduleDB
+            end
+        end
+
+        subgraph TemporaryStorage["Armazenamento temporário"]
+            direction LR
+            TempStore[("image-storage<br/>tmpfs · 64 MiB")]
+        end
+
+        subgraph Observability["Observabilidade"]
+            direction LR
+            Collector["otel-collector<br/>OTLP/HTTP · 4318"]
             OpenObserve["openobserve<br/>logs · traces"]
+            Collector -->|"OTLP/HTTP"| OpenObserve
         end
     end
 
     subgraph External["Serviços externos"]
+        direction TB
         Model["API do modelo configurado"]
         Vision["Google Cloud Vision<br/>DOCUMENT_TEXT_DETECTION"]
     end
 
-    Operator -->|"docker compose exec"| Runtime
-    Workspace <-->|"bind mount"| Runtime
-    Runtime <-->|"API do modelo"| Model
-    Runtime <-->|"MCP via SSE<br/>extract_exams(image_id)"| OCR
-    Runtime -->|"MCP via SSE<br/>search_exams(exam_names)"| RAG
-    Runtime -->|"HTTP<br/>POST /appointments"| Schedule
+    Runtime <-->|"API do modelo · tool calling"| Model
+    Runtime <-->|"MCP / SSE<br/>extract_exams(image_id)"| OCR
+    Runtime <-->|"MCP / SSE<br/>search_exams(exam_names)"| RAG
+    Runtime -->|"HTTP · POST /appointments · JWT"| Schedule
     Runtime -->|"escrita e limpeza"| TempStore
     TempStore -->|"leitura somente"| OCR
     OCR <-->|"HTTPS · imagem e resposta OCR"| Vision
-    Schedule -->|"SQLAlchemy · SQLite"| ScheduleDB
-    Operator -->|"Swagger · loopback local"| Schedule
+
+    Schedule -.->|"OTLP · logs e traces"| Collector
+    RAG -.->|"OTLP · logs e traces"| Collector
     Runtime -.->|"OTLP · logs e traces"| Collector
     OCR -.->|"OTLP · logs e traces"| Collector
-    RAG -.->|"OTLP · logs e traces"| Collector
-    Schedule -.->|"OTLP · logs e traces"| Collector
-    Collector -->|"OTLP/HTTP · streams separados"| OpenObserve
-    Operator -->|"UI · loopback local"| OpenObserve
 ```
+
+As linhas sólidas representam chamadas de negócio e acesso a dados; as tracejadas representam somente a exportação de telemetria.
 
 ## Responsabilidades
 
