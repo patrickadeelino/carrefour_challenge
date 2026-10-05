@@ -3,40 +3,27 @@
 from __future__ import annotations
 
 import importlib.util
-import subprocess
-import sys
+import json
 from pathlib import Path
 from types import ModuleType
+
+from carrefour_runtime.services.generate.service import generate_agent_file
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SPECIFICATION_PATH = RUNTIME_ROOT / "tests" / "fixtures" / "specification.json"
 
 
-def run_generate(
+def generate_agent_directly(
     output_path: Path,
     specification_path: Path = DEFAULT_SPECIFICATION_PATH,
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "carrefour_runtime",
-            "generate",
-            str(specification_path),
-            "--output",
-            str(output_path),
-        ],
-        cwd=RUNTIME_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+) -> Path:
+    specification = json.loads(specification_path.read_text(encoding="utf-8"))
+    generate_agent_file(specification, output_path)
+    return output_path
 
 
 def generate_agent_or_fail(output_path: Path) -> Path:
-    result = run_generate(output_path)
-    assert result.returncode == 0, result.stderr or result.stdout
-    return output_path
+    return generate_agent_directly(output_path)
 
 
 def load_generated_agent(output_path: Path) -> ModuleType:

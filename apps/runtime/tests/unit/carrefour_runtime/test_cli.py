@@ -108,6 +108,34 @@ def test_validate_reports_malformed_json_in_process(tmp_path, capsys):
     assert captured.out == ""
 
 
+def test_generate_reports_malformed_json_in_process(tmp_path, capsys):
+    malformed_path = tmp_path / "malformed.json"
+    malformed_path.write_text('{"agent":', encoding="utf-8")
+    output_path = tmp_path / "agent.py"
+
+    exit_code = main(["generate", str(malformed_path), "--output", str(output_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "JSON inválido" in captured.err
+    assert captured.out == ""
+    assert not output_path.exists()
+
+
+def test_generate_writes_agent_in_process(tmp_path, capsys):
+    output_path = tmp_path / "generated" / "agent.py"
+
+    exit_code = main(
+        ["generate", str(SPECIFICATION_PATH), "--output", str(output_path)]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert output_path.is_file()
+    assert f"Agente gerado: {output_path}" in captured.out
+    assert captured.err == ""
+
+
 def test_generate_reports_invalid_specification_in_process(tmp_path, capsys):
     specification = load_specification()
     specification["agent"]["model"]["name"] = "unapproved-model"
@@ -324,11 +352,17 @@ def test_package_entrypoint_exits_with_cli_result(monkeypatch):
         (("agent", "debug"), True, "agent.debug"),
     ],
 )
-def test_validate_rejects_invalid_specifications(tmp_path, path, value, expected_error):
+def test_validate_rejects_invalid_specifications(
+    tmp_path, path, value, expected_error, capsys
+):
     spec = load_specification()
     overwrite_json_value(spec, path, value)
+    specification_path = tmp_path / "invalid.json"
+    specification_path.write_text(json.dumps(spec), encoding="utf-8")
 
-    result = run_validate(tmp_path, spec)
+    exit_code = main(["validate", str(specification_path)])
+    captured = capsys.readouterr()
 
-    assert result.returncode != 0
-    assert expected_error in result.stderr
+    assert exit_code == 1
+    assert expected_error in captured.err
+    assert captured.out == ""

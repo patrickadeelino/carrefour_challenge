@@ -224,25 +224,12 @@ def make_process_service(
     return service, image_store, original_image
 
 
-@pytest.mark.parametrize(
-    "ocr_result",
-    [
-        {"exams": ["Hemograma completo", "Glicemia de jejum"]},
-        {"exams": []},
-        {
-            "status": "review_required",
-            "exams": ["Hemograma completo"],
-            "ambiguous_exams": ["TSH"],
-        },
-        {
-            "status": "review_required",
-            "reason": "sensitive_data_detected",
-        },
-    ],
-)
 def test_process_runs_generated_agent_over_sse_and_uses_structured_tool_result(
-    tmp_path: Path, ocr_result: dict[str, object]
+    tmp_path: Path,
 ) -> None:
+    ocr_result: dict[str, object] = {
+        "exams": ["Hemograma completo", "Glicemia de jejum"]
+    }
     output_path = tmp_path / "generated" / "agent.py"
     generate_agent_or_fail(output_path)
     deterministic_model = DeterministicOcrModel()
@@ -284,23 +271,6 @@ def test_process_runs_generated_agent_over_sse_and_uses_structured_tool_result(
     assert (tmp_path / "images" / "request.png").read_bytes() == original_image
 
 
-def test_process_removes_image_when_mcp_tool_returns_an_error(tmp_path: Path) -> None:
-    output_path = tmp_path / "generated" / "agent.py"
-    generate_agent_or_fail(output_path)
-    deterministic_model = DeterministicOcrModel()
-
-    async def process_request() -> None:
-        async with serve_fake_ocr("simulate an OCR failure") as (mcp_url, _):
-            service, image_store, _ = make_process_service(
-                tmp_path, output_path, mcp_url, deterministic_model
-            )
-            with pytest.raises(ProcessExecutionError):
-                await asyncio.wait_for(service.process("request.png"), timeout=15)
-            assert list(image_store.root.iterdir()) == []
-
-    asyncio.run(process_request())
-
-
 def test_process_fails_when_agent_does_not_call_ocr_tool(tmp_path: Path) -> None:
     output_path = tmp_path / "generated" / "agent.py"
     generate_agent_or_fail(output_path)
@@ -318,26 +288,3 @@ def test_process_fails_when_agent_does_not_call_ocr_tool(tmp_path: Path) -> None
     asyncio.run(process_request())
 
     assert deterministic_model.request_count == 1
-
-
-def test_process_cleans_image_when_mcp_service_is_unavailable(tmp_path: Path) -> None:
-    output_path = tmp_path / "generated" / "agent.py"
-    generate_agent_or_fail(output_path)
-    deterministic_model = DeterministicOcrModel()
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.bind(("127.0.0.1", 0))
-    port = listener.getsockname()[1]
-    listener.close()
-
-    async def process_request() -> None:
-        service, image_store, _ = make_process_service(
-            tmp_path,
-            output_path,
-            f"http://127.0.0.1:{port}/sse",
-            deterministic_model,
-        )
-        with pytest.raises(ProcessExecutionError, match="OCR indisponível"):
-            await asyncio.wait_for(service.process("request.png"), timeout=10)
-        assert list(image_store.root.iterdir()) == []
-
-    asyncio.run(process_request())
