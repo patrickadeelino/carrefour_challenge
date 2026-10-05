@@ -13,3 +13,11 @@ services:
     image: carrefour-challenge-assistant-runtime:runtime
     build:
       target: runtime
+
+  schedule-api:
+    image: carrefour-challenge-schedule-api:runtime
+    build:
+      target: runtime
+    environment:
+      CARREFOUR_SCHEDULE_ENABLE_DEMO_TOKEN_ISSUER: "false"
+      CARREFOUR_SCHEDULE_JWT_SECRET: ${CARREFOUR_SCHEDULE_JWT_SECRET:?Set CARREFOUR_SCHEDULE_JWT_SECRET}

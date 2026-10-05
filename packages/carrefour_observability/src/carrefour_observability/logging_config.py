@@ -5,14 +5,32 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import ClassVar
+
+_request_id_context: ContextVar[str | None] = ContextVar(
+    "carrefour_observability_request_id", default=None
+)
+
+
+@contextmanager
+def bind_request_id(request_id: str) -> Iterator[None]:
+    """Add a request identifier to log records in the current execution context."""
+    token: Token[str | None] = _request_id_context.set(request_id)
+    try:
+        yield
+    finally:
+        _request_id_context.reset(token)
 
 
 class JsonEventFormatter(logging.Formatter):
     """Serializa eventos com uma allowlist de campos operacionais."""
 
     _FIELD_TYPES: ClassVar[dict[str, type[str | int]]] = {
+        "request_id": str,
         "component": str,
         "duration_ms": int,
         "outcome": str,
@@ -42,6 +60,8 @@ class JsonEventFormatter(logging.Formatter):
             if field_name == "component":
                 continue
             value = getattr(record, field_name, None)
+            if field_name == "request_id" and not isinstance(value, str):
+                value = _request_id_context.get()
             if isinstance(value, field_type) and not isinstance(value, bool):
                 payload[field_name] = value
 

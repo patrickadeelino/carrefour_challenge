@@ -1,0 +1,63 @@
+[build-system]
+requires = ["uv_build>=0.12.20,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "carrefour-schedule-api"
+version = "0.1.0"
+description = "API fictícia de agendamento do Carrefour Challenge"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "carrefour-observability",
+    "fastapi>=0.121,<1",
+    "PyJWT>=2.10,<3",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn>=0.34,<1",
+]
+
+[project.scripts]
+carrefour-schedule-token = "carrefour_schedule_api.demo_token:main"
+
+[tool.uv.sources]
+carrefour-observability = { path = "../../packages/carrefour_observability", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+addopts = "-ra"
+pythonpath = ["src", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["carrefour_schedule_api"]
+
+[tool.coverage.report]
+show_missing = true
+precision = 1
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "C4", "C90", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/carrefour_schedule_api"]
+strict = true
+warn_unused_configs = true
+show_error_codes = true
+
+[dependency-groups]
+dev = [
+    "httpx2>=2,<3",
+    "mypy==2.3.1",
+    "pytest==8.3.5",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.9",
+]

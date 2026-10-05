@@ -37,6 +37,25 @@ services:
       CARREFOUR_RAG_ALLOWED_HOSTS: rag-mcp:8000
     restart: unless-stopped
 
+  schedule-api:
+    image: carrefour-challenge-schedule-api:dev
+    build:
+      context: ./apps/schedule_api
+      dockerfile: Dockerfile
+      target: dev
+      additional_contexts:
+        observability: ./packages/carrefour_observability
+    init: true
+    environment:
+      CARREFOUR_SCHEDULE_DATABASE_PATH: /var/lib/carrefour/schedule/appointments.sqlite3
+      CARREFOUR_SCHEDULE_ENABLE_DEMO_TOKEN_ISSUER: "true"
+      CARREFOUR_SCHEDULE_JWT_SECRET: ${CARREFOUR_SCHEDULE_JWT_SECRET:-local-only-secret-change-before-use-123456}
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - schedule-database:/var/lib/carrefour/schedule
+    restart: unless-stopped
+
   assistant-runtime:
     image: carrefour-challenge-assistant-runtime:dev
     build:
@@ -67,6 +86,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  schedule-database:
   image-storage:
     driver: local
     driver_opts:

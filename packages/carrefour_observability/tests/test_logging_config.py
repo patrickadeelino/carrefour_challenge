@@ -4,6 +4,7 @@ import logging
 import pytest
 from carrefour_observability.logging_config import (
     JsonEventFormatter,
+    bind_request_id,
     configure_json_logging,
 )
 
@@ -38,7 +39,41 @@ def test_formatter_adds_common_context_and_drops_unapproved_fields() -> None:
     assert "synthetic private marker" not in json.dumps(payload)
 
 
-@pytest.mark.parametrize("service_name", ["assistant-runtime", "ocr-mcp"])
+def test_request_id_context_is_attached_to_records_and_reset_afterward() -> None:
+    formatter = JsonEventFormatter("schedule-api")
+    request_record = logging.LogRecord(
+        name="carrefour_observability.test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="request started",
+        args=(),
+        exc_info=None,
+    )
+    request_record.event_name = "schedule.request.started"
+
+    with bind_request_id("synthetic-request-id"):
+        request_payload = json.loads(formatter.format(request_record))
+
+    unrelated_record = logging.LogRecord(
+        name="carrefour_observability.test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="startup event",
+        args=(),
+        exc_info=None,
+    )
+    unrelated_record.event_name = "schedule.database.ready"
+    unrelated_payload = json.loads(formatter.format(unrelated_record))
+
+    assert request_payload["request_id"] == "synthetic-request-id"
+    assert "request_id" not in unrelated_payload
+
+
+@pytest.mark.parametrize(
+    "service_name", ["assistant-runtime", "ocr-mcp", "schedule-api"]
+)
 def test_configured_logger_emits_json_to_stderr_only(service_name: str, capsys) -> None:
     namespace = f"carrefour_observability.logging_test.{service_name}"
     configure_json_logging(namespace, service_name)
