@@ -89,13 +89,14 @@ def test_failed_atomic_promotion_does_not_leave_partial_artifacts(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_resolve_returns_only_the_file_referenced_by_a_valid_uuid(tmp_path):
+def test_store_writes_image_to_the_shared_volume_using_its_internal_uuid(tmp_path):
     content = image_bytes("PNG")
     store = TemporaryImageStore(tmp_path)
     image_id = store.store(content)
 
-    assert store.resolve(image_id) == tmp_path / str(image_id)
-    assert store.resolve(image_id).read_bytes() == content
+    stored_file = tmp_path / str(image_id)
+    assert stored_file.is_file()
+    assert stored_file.read_bytes() == content
 
 
 def test_delete_removes_an_image_by_its_internal_id(tmp_path):

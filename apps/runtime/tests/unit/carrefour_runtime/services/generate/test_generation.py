@@ -1,44 +1,16 @@
 import ast
-import importlib.util
 import json
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 from google.adk.agents import Agent
 
-PROJECT_ROOT = Path(__file__).resolve().parents[5]
-SPECIFICATION_PATH = PROJECT_ROOT / "tests" / "fixtures" / "specification.json"
+from support.generation import (
+    DEFAULT_SPECIFICATION_PATH,
+    load_generated_agent,
+    run_generate,
+)
 
-
-def run_generate(
-    output_path: Path, specification_path: Path = SPECIFICATION_PATH
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "carrefour_runtime",
-            "generate",
-            str(specification_path),
-            "--output",
-            str(output_path),
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def load_generated_agent(output_path: Path):
-    module_spec = importlib.util.spec_from_file_location("generated_agent", output_path)
-    assert module_spec is not None
-    assert module_spec.loader is not None
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
+SPECIFICATION_PATH = DEFAULT_SPECIFICATION_PATH
 
 
 def medical_order_ocr(image_path: str) -> dict[str, str]:

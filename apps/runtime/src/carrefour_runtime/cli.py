@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,12 +12,12 @@ from .services.generate.service import (
     InvalidAgentSpecification,
     generate_agent_file,
 )
-from .services.image_storage.temporary_store import (
-    ImageStorageError,
-    TemporaryImageStore,
+from .services.image_storage.temporary_store import ImageStorageError
+from .services.process.composition import (
+    ProcessConfigurationError,
+    create_process_service,
 )
 from .services.process.errors import ProcessExecutionError
-from .services.process.service import OCRExecutor, ProcessService
 from .validation import validate_specification
 from .value_objects.exam_result import ExamResult
 
@@ -95,65 +94,19 @@ def print_process_result(result: ExamResult) -> int:
     return 0
 
 
-def _create_ocr_executor(generated_agent_path: Path) -> OCRExecutor:
-    from .services.process.adk_executor import AdkOcrExecutor
-
-    return AdkOcrExecutor(generated_agent_path)
-
-
 def _run_processing(filename: str) -> int:
-    generated_agent_path = Path(
-        os.environ.get("CARREFOUR_GENERATED_AGENT_PATH", "generated/agent.py")
-    )
-    if not generated_agent_path.is_file():
-        logger.error(
-            "process.configuration_failed",
-            extra={
-                "event_name": "process.configuration_failed",
-                "component": "cli",
-                "error_code": "generated_agent_missing",
-            },
-        )
-        print(
-            "Agente gerado ausente; execute generate antes de process.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not os.environ.get("GOOGLE_API_KEY", "").strip():
-        logger.error(
-            "process.configuration_failed",
-            extra={
-                "event_name": "process.configuration_failed",
-                "component": "cli",
-                "error_code": "runtime_api_key_missing",
-            },
-        )
-        print("GOOGLE_API_KEY não configurada.", file=sys.stderr)
-        return 1
-
-    image_directory = Path(
-        os.environ.get(
-            "CARREFOUR_INPUT_IMAGES_DIRECTORY",
-            "/workspace/tests/fixtures/images",
-        )
-    )
-    lock_path = Path(
-        os.environ.get(
-            "CARREFOUR_PROCESS_LOCK_PATH", "/tmp/carrefour-runtime/process.lock"
-        )
-    )
-
     try:
-        service = ProcessService(
-            image_directory=image_directory,
-            image_store=TemporaryImageStore(),
-            executor=_create_ocr_executor(generated_agent_path),
-            lock_path=lock_path,
+        service = create_process_service()
+    except ProcessConfigurationError as error:
+        logger.error(
+            "process.configuration_failed",
+            extra={
+                "event_name": "process.configuration_failed",
+                "component": "cli",
+                "error_code": error.error_code,
+            },
         )
-        result = asyncio.run(service.process(filename))
-    except ProcessExecutionError as error:
-        print(str(error), file=sys.stderr)
+        print(error.public_message, file=sys.stderr)
         return 1
     except ImageStorageError:
         logger.error(
@@ -166,6 +119,24 @@ def _run_processing(filename: str) -> int:
             },
         )
         print("não foi possível preparar o armazenamento temporário", file=sys.stderr)
+        return 1
+    except Exception as error:
+        logger.error(
+            "process.failed",
+            extra={
+                "event_name": "process.failed",
+                "component": "cli",
+                "error_code": "unexpected_runtime_failure",
+                "error_type": type(error).__name__,
+            },
+        )
+        print("falha técnica durante o processamento", file=sys.stderr)
+        return 1
+
+    try:
+        result = asyncio.run(service.process(filename))
+    except ProcessExecutionError as error:
+        print(str(error), file=sys.stderr)
         return 1
     except Exception as error:
         logger.error(

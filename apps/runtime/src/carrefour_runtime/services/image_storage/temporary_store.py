@@ -78,13 +78,6 @@ class TemporaryImageStore:
 
         return image_id
 
-    def resolve(self, image_id: ImageId) -> Path:
-        """Resolve um UUID canônico para um arquivo existente no diretório permitido."""
-        image_path = self._path_for(image_id)
-        if not image_path.is_file() or image_path.is_symlink():
-            raise ImageStorageError("imagem não encontrada")
-        return image_path
-
     def delete(self, image_id: ImageId) -> bool:
         """Apaga uma imagem pelo UUID; retorna False se ela já não existir."""
         image_path = self._path_for(image_id)

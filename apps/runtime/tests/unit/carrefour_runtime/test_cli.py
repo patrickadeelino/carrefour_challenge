@@ -190,51 +190,22 @@ def test_process_requires_gemini_api_key_after_generation(
     assert "GOOGLE_API_KEY não configurada" in capsys.readouterr().err
 
 
-def test_process_uses_an_injectable_executor_factory(tmp_path, monkeypatch, capsys):
-    generated_agent = tmp_path / "generated" / "agent.py"
-    generated_agent.parent.mkdir()
-    generated_agent.write_text("# generated test agent", encoding="utf-8")
-    monkeypatch.setenv("CARREFOUR_GENERATED_AGENT_PATH", str(generated_agent))
-    monkeypatch.setenv("GOOGLE_API_KEY", "deterministic-test-key")
+def test_process_uses_an_injectable_service_factory(monkeypatch, capsys):
     expected = ExamResult.from_mapping({"exams": ["Hemograma completo"]})
-    executor = object()
-    factory_paths = []
     process_calls = []
 
-    def create_executor(agent_path):
-        factory_paths.append(agent_path)
-        return executor
-
     class FakeProcessService:
-        def __init__(self, image_directory, image_store, executor, lock_path):
-            process_calls.append((image_directory, image_store, executor, lock_path))
-
         async def process(self, filename):
             process_calls.append(filename)
             return expected
 
-    monkeypatch.setattr(cli, "_create_ocr_executor", create_executor, raising=False)
-    monkeypatch.setattr(cli, "ProcessService", FakeProcessService)
-    monkeypatch.setattr(cli, "TemporaryImageStore", object)
+    monkeypatch.setattr(cli, "create_process_service", FakeProcessService)
 
     exit_code = main(["process", "--path", "request.png"])
 
-    assert factory_paths == [generated_agent]
-    assert process_calls[0][2] is executor
-    assert process_calls[-1] == "request.png"
+    assert process_calls == ["request.png"]
     assert exit_code == 0
     assert json.loads(capsys.readouterr().out) == {"exams": ["Hemograma completo"]}
-
-
-def test_create_ocr_executor_builds_adk_executor(tmp_path):
-    from carrefour_runtime.services.process.adk_executor import AdkOcrExecutor
-
-    generated_agent_path = tmp_path / "agent.py"
-
-    executor = cli._create_ocr_executor(generated_agent_path)
-
-    assert isinstance(executor, AdkOcrExecutor)
-    assert executor.generated_agent_path == generated_agent_path
 
 
 @pytest.mark.parametrize(
@@ -252,20 +223,18 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
     generated_agent.write_text("# generated", encoding="utf-8")
     monkeypatch.setenv("CARREFOUR_GENERATED_AGENT_PATH", str(generated_agent))
     monkeypatch.setenv("GOOGLE_API_KEY", "deterministic-test-key")
-    monkeypatch.setattr(cli, "_create_ocr_executor", lambda _: object())
 
     class FailedProcessService:
-        def __init__(self, **kwargs):
-            del kwargs
-            if isinstance(failure, ImageStorageError):
-                raise failure
-
         async def process(self, filename):
             del filename
             raise failure
 
-    monkeypatch.setattr(cli, "ProcessService", FailedProcessService)
-    monkeypatch.setattr(cli, "TemporaryImageStore", object)
+    def create_process_service():
+        if isinstance(failure, ImageStorageError):
+            raise failure
+        return FailedProcessService()
+
+    monkeypatch.setattr(cli, "create_process_service", create_process_service)
 
     exit_code = main(["process", "--path", "request.png"])
 

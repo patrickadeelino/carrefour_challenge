@@ -92,7 +92,7 @@ def test_process_stores_image_passes_only_uuid_and_deletes_temporary_copy(
     store = TemporaryImageStore(tmp_path / "temporary")
 
     def verify_temporary_copy(image_id: ImageId) -> None:
-        assert store.resolve(image_id).read_bytes() == original_bytes
+        assert (store.root / str(image_id)).read_bytes() == original_bytes
 
     executor = FakeExecutor(
         result,

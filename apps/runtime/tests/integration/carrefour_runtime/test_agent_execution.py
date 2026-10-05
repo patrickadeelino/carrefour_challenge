@@ -1,8 +1,5 @@
 import asyncio
-import importlib.util
 import socket
-import subprocess
-import sys
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -31,47 +28,15 @@ from support.adk_models import (
     function_call_response,
     text_response,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-SPECIFICATION_PATH = PROJECT_ROOT / "tests" / "fixtures" / "specification.json"
+from support.generation import (
+    generate_agent_or_fail,
+    load_generated_agent,
+)
 
 
 @pytest.fixture(autouse=True)
 def disable_google_mtls_for_local_sse(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false")
-
-
-def run_generate(output_path: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "carrefour_runtime",
-            "generate",
-            str(SPECIFICATION_PATH),
-            "--output",
-            str(output_path),
-        ],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def generate_agent_or_fail(output_path: Path) -> Path:
-    result = run_generate(output_path)
-    assert result.returncode == 0, result.stderr or result.stdout
-    return output_path
-
-
-def load_generated_agent(output_path: Path) -> Any:
-    module_spec = importlib.util.spec_from_file_location("generated_agent", output_path)
-    assert module_spec is not None
-    assert module_spec.loader is not None
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    return module
 
 
 class DeterministicToolCallingModel(BaseLlm):

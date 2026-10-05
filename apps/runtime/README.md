@@ -14,7 +14,7 @@ terminal que executou o comando e não devem ser presumidos em
 ## Estrutura do app
 
 - `services/generate/` valida a especificação e produz a factory ADK determinística.
-- `services/process/` coordena o pedido, executa o agente, monta o registro fechado de tools e captura o resultado estruturado dos eventos ADK.
+- `services/process/` coordena o pedido, compõe o caso de uso em `composition.py`, executa o agente, monta o registro fechado de tools e captura o resultado estruturado dos eventos ADK.
 - `services/image_storage/` valida e guarda a cópia temporária da imagem.
 - `value_objects/` representa o UUID interno da imagem e o resultado validado do OCR.
 - `tests/unit/carrefour_runtime/` espelha os serviços e objetos; `tests/integration/carrefour_runtime/` cobre a conexão SSE local com o ADK; `tests/e2e/` contém a validação manual optativa com Cloud Vision real.
