@@ -4,7 +4,7 @@
 
 Este documento apresenta a arquitetura atual em alto nível: containers, integrações, armazenamento compartilhado e fronteiras de confiança. O diagrama representa componentes e suas conexões; não descreve a sequência de execução dos comandos.
 
-Os contratos e passos detalhados ficam nas especificações da [Fase 1](phase1-spec.md) e da [Fase 2](phase2-spec.md). RAG e agendamento ainda não foram especificados e, por isso, não aparecem nesta arquitetura.
+Os contratos e passos detalhados ficam nas especificações da [Fase 1](phase1-spec.md) e da [Fase 2](phase2-spec.md). O RAG já está especificado e disponível como serviço independente; sua integração ao agente ainda é uma etapa futura. A API de agendamento ainda não foi especificada.
 
 ## Requisitos
 
@@ -13,6 +13,7 @@ Os contratos e passos detalhados ficam nas especificações da [Fase 1](phase1-s
 - Validar `specification.json` e gerar deterministicamente a factory Python do agente.
 - Receber uma imagem pelo comando `process`, acionar a extração OCR e apresentar exames ou uma resposta explícita que solicite revisão manual.
 - Reconhecer os dois layouts de referência usando Cloud Vision e classificação local, sem depender de um LLM para selecionar exames.
+- Resolver nomes de exames no catálogo versionado e retornar código somente em correspondências exatas e únicas; expor a busca por MCP SSE.
 
 ### Não funcionais
 
@@ -36,6 +37,7 @@ flowchart LR
         Runtime["assistant-runtime<br/>CLI · agente gerado · Google ADK"]
         TempStore[("image-storage<br/>tmpfs · 64 MiB")]
         OCR["ocr-mcp<br/>servidor MCP · extractors locais"]
+        RAG["rag-mcp<br/>servidor MCP · catálogo em memória"]
     end
 
     subgraph External["Serviços externos"]
@@ -47,6 +49,7 @@ flowchart LR
     Workspace <-->|"bind mount"| Runtime
     Runtime <-->|"API do modelo"| Model
     Runtime <-->|"MCP via SSE<br/>extract_exams(image_id)"| OCR
+    Runtime -.->|"integração futura · MCP via SSE<br/>search_exams(exam_names)"| RAG
     Runtime -->|"escrita e limpeza"| TempStore
     TempStore -->|"leitura somente"| OCR
     OCR <-->|"HTTPS · imagem e resposta OCR"| Vision
@@ -58,6 +61,7 @@ flowchart LR
 |---|---|
 | `assistant-runtime` | Executar `validate`, `generate` e `process`; carregar a factory gerada, orquestrar o agente ADK e produzir o resultado JSON no CLI. |
 | `ocr-mcp` | Expor `extract_exams(image_id)` por SSE, ler a imagem temporária, chamar o Cloud Vision, classificar localmente os dois layouts de referência e aplicar a barreira local de PII antes de responder. |
+| `rag-mcp` | Carregar e validar o catálogo versionado, construir um índice em memória e expor `search_exams(exam_names)` por SSE; correspondências aproximadas exigem revisão e não retornam códigos. |
 | `image-storage` | Volume `tmpfs` temporário compartilhado; o runtime grava e remove arquivos, enquanto o OCR tem acesso somente de leitura. |
 | API do modelo | Apoiar o agente na execução da tool aprovada; recebe o identificador interno e os metadados necessários ao agente, nunca a imagem ou o texto OCR integral. |
 | Google Cloud Vision | Reconhecer texto e posições na imagem enviada pelo OCR por `DOCUMENT_TEXT_DETECTION`. |
@@ -72,6 +76,7 @@ flowchart LR
 - O OCR analisa localmente os valores de `exams` e `ambiguous_exams` com Presidio, spaCy em português e recognizers brasileiros configurados. Ao sinalizar PII, devolve somente um status genérico de revisão; se a análise falhar, não libera o resultado. O detector reduz risco e não garante identificar toda PII.
 - Logs operacionais não incluem imagem, nome ou caminho do arquivo, UUID, dados pessoais, nomes de exames, texto OCR, prompts ou credenciais.
 - O servidor OCR não publica uma porta no host; o runtime o acessa pela rede do Compose. A saída funcional do CLI é JSON em `stdout`; logs e falhas sanitizadas usam `stderr`.
+- O servidor RAG também fica restrito à rede do Compose e não publica porta no host. A tool está disponível para clientes MCP; o runtime ainda não a integra ao agente.
 
 ## Limites atuais
 

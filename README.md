@@ -1,6 +1,6 @@
 # Carrefour Challenge
 
-**Estado:** Fase 1 concluída; o fluxo OCR da subfase 2.1 está implementado e passou pela validação ponta a ponta nas duas imagens de referência, com Cloud Vision real e modelo determinístico.
+**Estado:** Fase 1 concluída; o fluxo OCR da subfase 2.1 passou pela validação ponta a ponta nas duas imagens de referência, e o RAG da subfase 2.2 já expõe busca do catálogo por MCP SSE.
 
 O projeto constrói um agente exam scheduler a partir de uma especificação declarativa. A Fase 1 valida o JSON e gera uma factory Python para o Google ADK. A Fase 2 prepara os serviços e integrações do fluxo de atendimento.
 
@@ -18,7 +18,7 @@ A geração produz código-fonte; não executa a factory nem inicia o agente. O 
 
 O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos durante uma nova gravação.
 
-O Docker Compose inicia o runtime e o servidor OCR em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` passa a carregar a factory gerada, enviar somente o UUID da imagem ao agente e capturar o resultado estruturado de `extract_exams` por SSE. Catálogo e API de agendamento continuam fora desta fatia.
+O Docker Compose inicia o runtime, o servidor OCR e o RAG em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome>` carrega a factory gerada, envia somente o UUID da imagem ao agente e captura o resultado estruturado de `extract_exams` por SSE. O RAG expõe `search_exams` por SSE e resolve nomes no catálogo fictício; a integração entre o agente e o RAG e a API de agendamento continuam fora desta fatia.
 
 ## Documentação
 
@@ -31,6 +31,7 @@ O Docker Compose inicia o runtime e o servidor OCR em containers independentes. 
 - [Playbook de logging](docs/playbooks/logging.md): eventos estruturados, 5 Ws e política de privacidade.
 - [Playbook de testes](docs/playbooks/testing.md): organização e execução das suítes nos containers.
 - [App runtime](apps/runtime/README.md): responsabilidades e limite do projeto Python executável.
+- [App RAG MCP](apps/rag_mcp/README.md): catálogo, busca, transporte SSE, logs e validações.
 - [Handoff da Fase 1](docs/HANDOFF_FASE_1.md): decisões e contexto para continuidade.
 - [Exemplo de especificação](specification.json).
 
@@ -44,10 +45,18 @@ Python, uv e as dependências do projeto são instalados dentro da imagem. Não 
 ## Construir e iniciar o container
 
 ~~~sh
-docker compose up -d --build assistant-runtime ocr-mcp
+docker compose up -d --build assistant-runtime ocr-mcp rag-mcp
 ~~~
 
-Cada app é construído de forma independente a partir de sua própria pasta, com `pyproject.toml` e `uv.lock` próprios. O repositório é montado em `/workspace` no runtime para acessar `specification.json` e as imagens de demonstração. Os dois containers executam como usuário não root. Se o GID do grupo do host não for 1000, configure `CARREFOUR_RUNTIME_GID` no arquivo `.env` do projeto.
+Cada app é construído de forma independente a partir de sua própria pasta, com `pyproject.toml` e `uv.lock` próprios. O repositório é montado em `/workspace` no runtime para acessar `specification.json` e as imagens de demonstração. Os containers executam como usuário não root. Se o GID do grupo do host não for 1000, configure `CARREFOUR_RUNTIME_GID` no arquivo `.env` do projeto.
+
+O Compose principal constrói os alvos `dev`, com pytest, Ruff e Mypy disponíveis nos containers. Para construir e iniciar as imagens `runtime`, sem essas dependências, use o overlay:
+
+~~~sh
+docker compose -f compose.yaml -f compose.runtime.yaml up -d --build assistant-runtime ocr-mcp rag-mcp
+~~~
+
+Os alvos `runtime` e `dev` compartilham as camadas das dependências de produção; ferramentas de desenvolvimento são acrescentadas apenas ao alvo `dev`.
 
 O OCR precisa da chave do Cloud Vision no ambiente de execução. Para Compose local, adicione a variável ao `.env` ignorado pelo Git:
 
@@ -56,7 +65,7 @@ GOOGLE_CLOUD_VISION_API_KEY=sua-chave
 GOOGLE_API_KEY=sua-chave-da-gemini
 ~~~
 
-`GOOGLE_CLOUD_VISION_API_KEY` é entregue somente ao OCR. `GOOGLE_API_KEY` é entregue somente ao runtime para executar o modelo declarado na especificação. As chaves não são incluídas no build. O servidor OCR atende em `http://ocr-mcp:8000/sse` dentro da rede Compose; a porta não é publicada no host.
+`GOOGLE_CLOUD_VISION_API_KEY` é entregue somente ao OCR. `GOOGLE_API_KEY` é entregue somente ao runtime para executar o modelo declarado na especificação. As chaves não são incluídas no build. O OCR atende em `http://ocr-mcp:8000/sse` e o RAG em `http://rag-mcp:8000/sse` dentro da rede Compose; nenhuma dessas portas é publicada no host.
 
 Para parar o ambiente:
 
@@ -102,7 +111,7 @@ Os eventos não incluem nome do arquivo, UUID da imagem, nomes de exames, texto 
 
 ## Testes e análise estática
 
-A imagem inclui pytest, Ruff e Mypy para executar verificações no container. A suíte padrão contém testes unitários e testes do fluxo ADK/MCP com um servidor SSE local e modelo determinístico; ela não chama Gemini nem Cloud Vision reais. O E2E manual descrito abaixo é a exceção: chama Cloud Vision real, mas mantém o modelo Gemini determinístico.
+As imagens de desenvolvimento incluem pytest, Ruff e Mypy para executar verificações no container. A suíte padrão contém testes unitários e testes do fluxo ADK/MCP com um servidor SSE local e modelo determinístico; ela não chama Gemini nem Cloud Vision reais. O E2E manual descrito abaixo é a exceção: chama Cloud Vision real, mas mantém o modelo Gemini determinístico.
 
 ~~~sh
 docker compose exec -w /workspace/apps/runtime assistant-runtime pytest -q
@@ -120,6 +129,15 @@ docker compose exec -w /workspace/apps/ocr_mcp ocr-mcp ruff format --check .
 docker compose exec -w /workspace/apps/ocr_mcp ocr-mcp mypy
 ~~~
 
+Os testes unitários e de transporte do RAG também rodam dentro do container:
+
+~~~sh
+docker compose exec -w /workspace/apps/rag_mcp rag-mcp pytest -q
+docker compose exec -w /workspace/apps/rag_mcp rag-mcp ruff check .
+docker compose exec -w /workspace/apps/rag_mcp rag-mcp ruff format --check .
+docker compose exec -w /workspace/apps/rag_mcp rag-mcp mypy
+~~~
+
 ## E2E manual com Cloud Vision real
 
 Este E2E é optativo e fica fora da suíte padrão e do CI. Ele percorre o comando
@@ -132,7 +150,7 @@ Configure `GOOGLE_CLOUD_VISION_API_KEY` no `.env` ignorado pelo Git e inicie os
 serviços. Gere também a factory do agente uma vez:
 
 ~~~sh
-docker compose up -d --build assistant-runtime ocr-mcp
+docker compose up -d --build assistant-runtime ocr-mcp rag-mcp
 docker compose exec assistant-runtime python -m carrefour_runtime generate specification.json --output generated/agent.py
 ~~~
 

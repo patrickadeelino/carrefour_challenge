@@ -1,0 +1,50 @@
+{
+  "normalized_exact": [
+    {"query": "HEMOGRAMA COMPLETO", "expected_code": "CAT-001"},
+    {"query": "  hemograma   completo  ", "expected_code": "CAT-001"},
+    {"query": "hemograma-completo", "expected_code": "CAT-001"},
+    {"query": "hemograma, completo", "expected_code": "CAT-001"},
+    {"query": "GLICEMIA DE JEJUM", "expected_code": "CAT-002"},
+    {"query": "glicemia-de-jejum", "expected_code": "CAT-002"},
+    {"query": "hemoglobina glicada hba1c", "expected_code": "CAT-003"},
+    {"query": "HEMOGLOBINA GLICADA (HBA1C)", "expected_code": "CAT-003"},
+    {"query": "colesterol total e fracoes", "expected_code": "CAT-004"},
+    {"query": "colesterol   total, e FRAÇÕES", "expected_code": "CAT-004"},
+    {"query": "vitamina d 25 oh", "expected_code": "CAT-024"},
+    {"query": "VITAMINA-D-(25-OH)", "expected_code": "CAT-024"}
+  ],
+  "typo_candidates": [
+    {"query": "Hemogrma completo", "expected_code": "CAT-001"},
+    {"query": "Hemograma complto", "expected_code": "CAT-001"},
+    {"query": "Glicemia de jejm", "expected_code": "CAT-002"},
+    {"query": "Hemoglobina glicda", "expected_code": "CAT-003"},
+    {"query": "HbA1", "expected_code": "CAT-003"},
+    {"query": "Colestrol total e fracoes", "expected_code": "CAT-004"},
+    {"query": "TSH hormonio tireoestimulnte", "expected_code": "CAT-005"},
+    {"query": "Creatinina sericaa", "expected_code": "CAT-006"},
+    {"query": "ferritna", "expected_code": "CAT-012"},
+    {"query": "potassioo", "expected_code": "CAT-021"},
+    {"query": "vitamina d 25-o", "expected_code": "CAT-024"},
+    {"query": "paratormonio pthh", "expected_code": "CAT-046"}
+  ],
+  "qualifier_near_misses": [
+    {"query": "T3 reverso total"},
+    {"query": "T3 livre total"},
+    {"query": "T4 livre reverso"},
+    {"query": "IgG total sérica"},
+    {"query": "Colesterol HDL sérico"},
+    {"query": "Testosterona livre total"},
+    {"query": "Glicemia jejum pós-prandial"},
+    {"query": "PSA livre total"}
+  ],
+  "out_of_catalog": [
+    {"query": "Vitamina B6 sérica"},
+    {"query": "Troponina ultrassensível"},
+    {"query": "Procalcitonina"},
+    {"query": "Doppler venoso de membros inferiores"},
+    {"query": "Fator V Leiden"},
+    {"query": "Exoma clínico completo"},
+    {"query": "Teste ergométrico"},
+    {"query": "Peptídeo natriurético cerebral"}
+  ]
+}

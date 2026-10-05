@@ -149,35 +149,43 @@ Referências para a revisão: [modelo de status do Cloud Vision](https://docs.cl
 
 #### Etapa 1 — Especificar catálogo e contrato da tool
 
-- [ ] Definir o JSON como fonte versionada do catálogo, com pelo menos 100 exames fictícios, código único, nome canônico e aliases aprovados.
-- [ ] Definir a validação na inicialização: estrutura, campos obrigatórios, códigos únicos e aliases; permitir que um alias compartilhado aponte para vários exames para que a busca possa sinalizar ambiguidade.
-- [ ] Definir o contrato de busca em lote: uma chamada recebe uma lista de nomes e retorna um resultado por nome distinto, com estados `resolved`, `ambiguous` ou `not_found`.
-- [ ] Definir a deduplicação de nomes de entrada após normalização, preservando a ordem da primeira ocorrência.
-- [ ] Definir que respostas resolvidas incluem código e nome canônico; respostas ambíguas incluem candidatos sem escolher um deles; respostas não encontradas não inventam códigos.
+- [x] Definir o JSON como fonte versionada do catálogo, empacotado em `apps/rag_mcp`, com 122 registros de exames e códigos fictícios únicos, nomes canônicos e aliases aprovados. O Git versiona o arquivo; o contrato não adiciona `schema_version`.
+- [x] Implementar a validação estrita do catálogo: estrutura e campos obrigatórios, mínimo de 100 exames, formato e unicidade de códigos, nomes canônicos únicos e aliases não vazios nem repetidos dentro do mesmo exame. Aliases compartilhados entre exames distintos são permitidos para que a busca possa sinalizar ambiguidade.
+- [x] Definir o contrato da tool em lote `search_exams(exam_names)`, com limite de 50 nomes e 160 caracteres por nome. A resposta tem um item por nome normalizado distinto e estados `resolved`, `ambiguous`, `review_required` ou `not_found`.
+- [x] Definir a deduplicação após normalização e a ordem da primeira ocorrência. `input_indices` relaciona cada resultado a todas as posições originais da consulta correspondente.
+- [x] Definir que somente respostas `resolved` incluem código. Respostas ambíguas ou aproximadas incluem nomes candidatos sem códigos; `not_found` não inventa código. A API de agendamento futura recebe apenas exames resolvidos/confirmados.
 
 #### Etapa 2 — Construir índice e recuperação
 
-- [ ] Normalizar nome canônico, aliases e consultas com regras idênticas para caixa, acentos, pontuação e espaços.
-- [ ] Construir na inicialização um índice em memória no qual cada termo normalizado aponta para um ou mais exames.
-- [ ] Implementar busca exata primeiro, cobrindo nomes canônicos e aliases; se o termo exato apontar para múltiplos exames, retornar `ambiguous`.
-- [ ] Quando não houver correspondência exata, usar RapidFuzz para comparar a consulta com os termos do índice e ordenar candidatos por similaridade.
-- [ ] Manter a busca aproximada como geração de candidatos; definir os limites para resolução automática somente após avaliação rotulada. Candidatos próximos ou sem evidência suficiente exigem revisão ou retornam `not_found`, conforme o contrato aprovado.
-- [ ] Retornar o método de correspondência e os candidatos necessários para explicar a decisão, sem registrar nomes de exames em logs operacionais.
+- [x] Normalizar nome canônico, aliases e consultas com regras idênticas para caixa, acentos, pontuação e espaços, preservando qualificadores clínicos.
+- [x] Construir na inicialização um índice em memória no qual cada termo normalizado aponta para um ou mais exames.
+- [x] Implementar busca exata primeiro, cobrindo nomes canônicos e aliases; se o termo exato apontar para múltiplos exames, retornar `ambiguous`.
+- [x] Quando não houver correspondência exata, usar RapidFuzz `fuzz.ratio` para comparar a consulta com os termos do índice e ordenar até três candidatos por similaridade, com desempate por código.
+- [x] Manter a busca aproximada como geração de candidatos: o corte calibrado em 80 pontos produz `review_required`, abaixo dele retorna `not_found`, e nenhum resultado aproximado recebe código.
+- [x] Retornar o método de correspondência e os candidatos necessários para explicar a decisão, sem registrar nomes de exames em logs operacionais.
+
+**Cobertura automatizada desta etapa:** teste de resolução individual dos 122 nomes canônicos e 105 aliases; 11 nomes vindos dos dois layouts OCR (7 códigos distintos); 40 casos rotulados em `apps/rag_mcp/tests/fixtures/retrieval_cases.json`; colisão de alias, deduplicação, ordenação determinística e preservação de qualificadores. Nos casos sintéticos, o menor score dos typos foi 83,7 e o maior dos nomes fora do catálogo foi 75,0; o corte 80 deixa margens de 3,7 e 5 pontos para esses casos rotulados. Scores são semelhança textual, não probabilidades, e este conjunto pequeno não representa pedidos clínicos gerais.
 
 #### Etapa 3 — Avaliar a recuperação
 
-- [ ] Montar casos de referência a partir dos exames identificados nas duas imagens de teste e associar cada consulta ao código esperado.
-- [ ] Avaliar a recuperação separadamente do OCR para distinguir erros de extração de erros de catálogo.
-- [ ] Cobrir correspondência exata, alias, erro ortográfico, alias compartilhado/ambiguidade e exame ausente; incluir variações sintéticas de grafia para medir o comportamento aproximado.
-- [ ] Medir acertos, falsos positivos, ambiguidades e abstenções; calibrar limites sem presumir que uma pontuação de similaridade seja uma probabilidade de acerto.
-- [ ] Executar testes sem depender de LLM, Cloud Vision ou API de agendamento.
+- [x] Montar casos de referência a partir dos exames identificados nas duas imagens de teste e associar cada consulta ao código esperado.
+- [x] Avaliar a recuperação separadamente do OCR para distinguir erros de extração de erros de catálogo.
+- [x] Cobrir correspondência exata, alias, erro ortográfico, alias compartilhado/ambiguidade e exame ausente; incluir variações sintéticas de grafia para medir o comportamento aproximado.
+- [x] Medir os casos rotulados e calibrar o corte sem presumir que uma pontuação de similaridade seja uma probabilidade: 227/227 etiquetas exatas, 11/11 ocorrências OCR corretas, 12/12 typos com o alvo no top 3, 8/8 OOV como `not_found` e 8/8 variações de qualificadores sem resolução automática.
+- [x] Executar testes sem depender de LLM, Cloud Vision ou API de agendamento.
+
+**Limite da avaliação:** os resultados são regressões de um catálogo e 40 casos sintéticos pequenos; não representam pedidos clínicos arbitrários nem demonstram cobertura geral de OCR. O corte 80 deve ser revisto se o catálogo ou a distribuição das consultas mudar.
 
 #### Etapa 4 — Expor e documentar o MCP RAG
 
-- [ ] Implementar o servidor MCP como app independente e expor a busca pelo transporte SSE exigido pelo desafio.
-- [ ] Testar descoberta e chamada da tool pelo transporte SSE, incluindo resultados resolvidos, ambíguos, não encontrados e falhas de entrada/catálogo.
-- [ ] Adicionar o serviço ao Docker Compose sem publicar desnecessariamente sua porta no host.
-- [ ] Documentar o formato do catálogo, contrato de entrada e saída, estratégia de recuperação, avaliação e comandos para iniciar e verificar o servidor.
+- [x] Preparar a fronteira MCP em memória com a tool `search_exams`, dependência de logging compartilhada e eventos JSON seguros para inicialização do catálogo e conclusão, rejeição ou falha da busca.
+- [x] Testar eventos via cliente MCP em memória, incluindo resultados ambíguos, aproximados e não encontrados; confirmar duração, severidade, códigos técnicos e ausência de consultas, exames e mensagens brutas nos logs.
+- [x] Implementar o servidor MCP como app independente e expor a busca pelo transporte SSE exigido pelo desafio.
+- [x] Testar descoberta e chamada da tool pelo transporte SSE, incluindo resultados resolvidos, aproximados, falhas de entrada e rejeição de Host não permitido.
+- [x] Adicionar o serviço ao Docker Compose sem publicar sua porta no host; limitar a proteção DNS rebinding ao host `rag-mcp:8000`.
+- [x] Documentar o formato do catálogo, contrato de entrada e saída, estratégia de recuperação, avaliação, transporte, logs e comandos para iniciar e verificar o servidor.
+
+**Resultado:** o RAG inicia como app independente, carrega o catálogo uma vez e expõe `search_exams` em `http://rag-mcp:8000/sse` na rede interna do Compose. O teste SSE usa um servidor local com cliente MCP real e valida descoberta, resposta estruturada, rejeição de entrada e host não permitido. Access logs HTTP ficam desativados; os logs JSON da aplicação permanecem em `stderr` e não contêm consultas nem dados de exames. O runtime ainda não chama o RAG.
 
 **Entrega candidata:** catálogo fictício validado e busca em lote disponível por MCP SSE, com correspondência exata e aproximada avaliadas e resultados que não escolhem códigos de forma ambígua.
 

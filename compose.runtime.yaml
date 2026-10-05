@@ -1,0 +1,15 @@
+services:
+  ocr-mcp:
+    image: carrefour-challenge-ocr-mcp:runtime
+    build:
+      target: runtime
+
+  rag-mcp:
+    image: carrefour-challenge-rag-mcp:runtime
+    build:
+      target: runtime
+
+  assistant-runtime:
+    image: carrefour-challenge-assistant-runtime:runtime
+    build:
+      target: runtime

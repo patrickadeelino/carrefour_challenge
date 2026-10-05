@@ -1,0 +1,818 @@
+{
+  "exams": [
+    {
+      "code": "CAT-001",
+      "name": "Hemograma completo",
+      "aliases": [
+        "Hemograma"
+      ]
+    },
+    {
+      "code": "CAT-002",
+      "name": "Glicemia de jejum",
+      "aliases": [
+        "Glicemia"
+      ]
+    },
+    {
+      "code": "CAT-003",
+      "name": "Hemoglobina glicada (HbA1c)",
+      "aliases": [
+        "HbA1c",
+        "A1c"
+      ]
+    },
+    {
+      "code": "CAT-004",
+      "name": "Colesterol total e frações",
+      "aliases": [
+        "Perfil lipídico",
+        "Lipidograma"
+      ]
+    },
+    {
+      "code": "CAT-005",
+      "name": "TSH (hormônio tireoestimulante)",
+      "aliases": [
+        "TSH"
+      ]
+    },
+    {
+      "code": "CAT-006",
+      "name": "Creatinina sérica",
+      "aliases": [
+        "Creatinina"
+      ]
+    },
+    {
+      "code": "CAT-007",
+      "name": "CPK (Creatina quinase)",
+      "aliases": [
+        "CPK"
+      ]
+    },
+    {
+      "code": "CAT-008",
+      "name": "D-dímero",
+      "aliases": [
+        "Dímero D"
+      ]
+    },
+    {
+      "code": "CAT-009",
+      "name": "DHEA-S",
+      "aliases": [
+        "Sulfato de DHEA"
+      ]
+    },
+    {
+      "code": "CAT-010",
+      "name": "Fator antinuclear (FAN)",
+      "aliases": [
+        "FAN"
+      ]
+    },
+    {
+      "code": "CAT-011",
+      "name": "Fator reumatoide",
+      "aliases": [
+        "FR"
+      ]
+    },
+    {
+      "code": "CAT-012",
+      "name": "Ferritina",
+      "aliases": []
+    },
+    {
+      "code": "CAT-013",
+      "name": "Ferro sérico",
+      "aliases": [
+        "Ferro"
+      ]
+    },
+    {
+      "code": "CAT-014",
+      "name": "Fibrinogênio",
+      "aliases": []
+    },
+    {
+      "code": "CAT-015",
+      "name": "Fósforo",
+      "aliases": [
+        "Fosfato"
+      ]
+    },
+    {
+      "code": "CAT-016",
+      "name": "Gama-glutamil transferase",
+      "aliases": [
+        "GGT",
+        "Gama GT"
+      ]
+    },
+    {
+      "code": "CAT-017",
+      "name": "Hemossedimentação (VHS)",
+      "aliases": [
+        "VHS"
+      ]
+    },
+    {
+      "code": "CAT-018",
+      "name": "Insulina",
+      "aliases": []
+    },
+    {
+      "code": "CAT-019",
+      "name": "Lactato desidrogenase (LDH)",
+      "aliases": [
+        "LDH"
+      ]
+    },
+    {
+      "code": "CAT-020",
+      "name": "Magnésio",
+      "aliases": []
+    },
+    {
+      "code": "CAT-021",
+      "name": "Potássio",
+      "aliases": [
+        "K sérico"
+      ]
+    },
+    {
+      "code": "CAT-022",
+      "name": "Sódio",
+      "aliases": [
+        "Na sérico"
+      ]
+    },
+    {
+      "code": "CAT-023",
+      "name": "Ureia",
+      "aliases": [
+        "Ureia sérica"
+      ]
+    },
+    {
+      "code": "CAT-024",
+      "name": "Vitamina D (25-OH)",
+      "aliases": [
+        "25-hidroxivitamina D"
+      ]
+    },
+    {
+      "code": "CAT-025",
+      "name": "Vitamina B12",
+      "aliases": [
+        "Cobalamina"
+      ]
+    },
+    {
+      "code": "CAT-026",
+      "name": "Ácido fólico",
+      "aliases": [
+        "Folato"
+      ]
+    },
+    {
+      "code": "CAT-027",
+      "name": "Ácido úrico",
+      "aliases": []
+    },
+    {
+      "code": "CAT-028",
+      "name": "Albumina",
+      "aliases": [
+        "Albumina sérica"
+      ]
+    },
+    {
+      "code": "CAT-029",
+      "name": "Aldolase",
+      "aliases": []
+    },
+    {
+      "code": "CAT-030",
+      "name": "Amilase",
+      "aliases": [
+        "Amilase sérica"
+      ]
+    },
+    {
+      "code": "CAT-031",
+      "name": "Anticorpo anti-TPO",
+      "aliases": [
+        "Anti-TPO"
+      ]
+    },
+    {
+      "code": "CAT-032",
+      "name": "Anticorpo antitireoglobulina",
+      "aliases": [
+        "Anti-tireoglobulina"
+      ]
+    },
+    {
+      "code": "CAT-033",
+      "name": "Apolipoproteína A1",
+      "aliases": [
+        "Apo A1"
+      ]
+    },
+    {
+      "code": "CAT-034",
+      "name": "Apolipoproteína B",
+      "aliases": [
+        "Apo B"
+      ]
+    },
+    {
+      "code": "CAT-035",
+      "name": "Aspartato aminotransferase (AST/TGO)",
+      "aliases": [
+        "AST",
+        "TGO"
+      ]
+    },
+    {
+      "code": "CAT-036",
+      "name": "Alanina aminotransferase (ALT/TGP)",
+      "aliases": [
+        "ALT",
+        "TGP"
+      ]
+    },
+    {
+      "code": "CAT-037",
+      "name": "Bilirrubina total e frações",
+      "aliases": [
+        "Bilirrubinas"
+      ]
+    },
+    {
+      "code": "CAT-038",
+      "name": "Cálcio total",
+      "aliases": []
+    },
+    {
+      "code": "CAT-039",
+      "name": "Cálcio iônico",
+      "aliases": [
+        "Cálcio ionizado"
+      ]
+    },
+    {
+      "code": "CAT-040",
+      "name": "Capacidade total de ligação do ferro",
+      "aliases": [
+        "TIBC"
+      ]
+    },
+    {
+      "code": "CAT-041",
+      "name": "Ceruloplasmina",
+      "aliases": []
+    },
+    {
+      "code": "CAT-042",
+      "name": "Cloro",
+      "aliases": [
+        "Cloreto"
+      ]
+    },
+    {
+      "code": "CAT-043",
+      "name": "Cortisol basal",
+      "aliases": [
+        "Cortisol"
+      ]
+    },
+    {
+      "code": "CAT-044",
+      "name": "Fosfatase alcalina",
+      "aliases": [
+        "FA"
+      ]
+    },
+    {
+      "code": "CAT-045",
+      "name": "Lipase",
+      "aliases": [
+        "Lipase sérica"
+      ]
+    },
+    {
+      "code": "CAT-046",
+      "name": "Paratormônio (PTH)",
+      "aliases": [
+        "PTH"
+      ]
+    },
+    {
+      "code": "CAT-047",
+      "name": "Proteína C reativa quantitativa",
+      "aliases": [
+        "PCR quantitativa"
+      ]
+    },
+    {
+      "code": "CAT-048",
+      "name": "Proteínas totais e frações",
+      "aliases": []
+    },
+    {
+      "code": "CAT-049",
+      "name": "T3 reverso",
+      "aliases": [
+        "T3R"
+      ]
+    },
+    {
+      "code": "CAT-050",
+      "name": "T3 total",
+      "aliases": []
+    },
+    {
+      "code": "CAT-051",
+      "name": "T3 livre",
+      "aliases": []
+    },
+    {
+      "code": "CAT-052",
+      "name": "T4 total",
+      "aliases": []
+    },
+    {
+      "code": "CAT-053",
+      "name": "T4 livre",
+      "aliases": []
+    },
+    {
+      "code": "CAT-054",
+      "name": "Tireoglobulina",
+      "aliases": []
+    },
+    {
+      "code": "CAT-055",
+      "name": "Triglicerídeos",
+      "aliases": [
+        "Triglicérides"
+      ]
+    },
+    {
+      "code": "CAT-056",
+      "name": "Vitamina A",
+      "aliases": [
+        "Retinol"
+      ]
+    },
+    {
+      "code": "CAT-057",
+      "name": "Vitamina C",
+      "aliases": [
+        "Ácido ascórbico"
+      ]
+    },
+    {
+      "code": "CAT-058",
+      "name": "Vitamina E",
+      "aliases": [
+        "Tocoferol"
+      ]
+    },
+    {
+      "code": "CAT-059",
+      "name": "Vitamina K",
+      "aliases": []
+    },
+    {
+      "code": "CAT-060",
+      "name": "Zinco",
+      "aliases": [
+        "Zinco sérico"
+      ]
+    },
+    {
+      "code": "CAT-061",
+      "name": "17-hidroxiprogesterona",
+      "aliases": [
+        "17-OHP"
+      ]
+    },
+    {
+      "code": "CAT-062",
+      "name": "ACTH",
+      "aliases": [
+        "Hormônio adrenocorticotrófico"
+      ]
+    },
+    {
+      "code": "CAT-063",
+      "name": "Androstenediona",
+      "aliases": []
+    },
+    {
+      "code": "CAT-064",
+      "name": "PSA total",
+      "aliases": [
+        "Antígeno prostático específico total"
+      ]
+    },
+    {
+      "code": "CAT-065",
+      "name": "PSA livre",
+      "aliases": [
+        "Antígeno prostático específico livre"
+      ]
+    },
+    {
+      "code": "CAT-066",
+      "name": "Beta-hCG quantitativo",
+      "aliases": [
+        "Beta HCG"
+      ]
+    },
+    {
+      "code": "CAT-067",
+      "name": "Estradiol",
+      "aliases": [
+        "E2"
+      ]
+    },
+    {
+      "code": "CAT-068",
+      "name": "FSH",
+      "aliases": [
+        "Hormônio folículo-estimulante"
+      ]
+    },
+    {
+      "code": "CAT-069",
+      "name": "GH",
+      "aliases": [
+        "Hormônio do crescimento"
+      ]
+    },
+    {
+      "code": "CAT-070",
+      "name": "IGF-1",
+      "aliases": [
+        "Somatomedina C"
+      ]
+    },
+    {
+      "code": "CAT-071",
+      "name": "LH",
+      "aliases": [
+        "Hormônio luteinizante"
+      ]
+    },
+    {
+      "code": "CAT-072",
+      "name": "Progesterona",
+      "aliases": []
+    },
+    {
+      "code": "CAT-073",
+      "name": "Prolactina",
+      "aliases": [
+        "PRL"
+      ]
+    },
+    {
+      "code": "CAT-074",
+      "name": "SHBG",
+      "aliases": [
+        "Globulina ligadora de hormônios sexuais"
+      ]
+    },
+    {
+      "code": "CAT-075",
+      "name": "Testosterona livre",
+      "aliases": []
+    },
+    {
+      "code": "CAT-076",
+      "name": "Testosterona total",
+      "aliases": []
+    },
+    {
+      "code": "CAT-077",
+      "name": "Testosterona biodisponível",
+      "aliases": []
+    },
+    {
+      "code": "CAT-078",
+      "name": "Dihidrotestosterona",
+      "aliases": [
+        "DHT"
+      ]
+    },
+    {
+      "code": "CAT-079",
+      "name": "Peptídeo C",
+      "aliases": [
+        "C-peptídeo"
+      ]
+    },
+    {
+      "code": "CAT-080",
+      "name": "HOMA-IR",
+      "aliases": [
+        "Índice HOMA-IR"
+      ]
+    },
+    {
+      "code": "CAT-081",
+      "name": "Microalbuminúria",
+      "aliases": [
+        "Albumina urinária"
+      ]
+    },
+    {
+      "code": "CAT-082",
+      "name": "Urina tipo I (EAS)",
+      "aliases": [
+        "EAS",
+        "Elementos anormais e sedimento"
+      ]
+    },
+    {
+      "code": "CAT-083",
+      "name": "Urocultura",
+      "aliases": [
+        "Cultura de urina"
+      ]
+    },
+    {
+      "code": "CAT-084",
+      "name": "Proteína urinária de 24 horas",
+      "aliases": [
+        "Proteinúria 24 horas"
+      ]
+    },
+    {
+      "code": "CAT-085",
+      "name": "Parasitológico de fezes",
+      "aliases": [
+        "Exame parasitológico de fezes"
+      ]
+    },
+    {
+      "code": "CAT-086",
+      "name": "Sangue oculto nas fezes",
+      "aliases": [
+        "Pesquisa de sangue oculto fecal"
+      ]
+    },
+    {
+      "code": "CAT-087",
+      "name": "Coprocultura",
+      "aliases": [
+        "Cultura de fezes"
+      ]
+    },
+    {
+      "code": "CAT-088",
+      "name": "Calprotectina fecal",
+      "aliases": []
+    },
+    {
+      "code": "CAT-089",
+      "name": "Beta-2-microglobulina",
+      "aliases": [
+        "Beta 2 microglobulina"
+      ]
+    },
+    {
+      "code": "CAT-090",
+      "name": "CA 125",
+      "aliases": [
+        "Antígeno CA 125"
+      ]
+    },
+    {
+      "code": "CAT-091",
+      "name": "CA 15-3",
+      "aliases": [
+        "Antígeno CA 15-3"
+      ]
+    },
+    {
+      "code": "CAT-092",
+      "name": "CA 19-9",
+      "aliases": [
+        "Antígeno CA 19-9"
+      ]
+    },
+    {
+      "code": "CAT-093",
+      "name": "CEA",
+      "aliases": [
+        "Antígeno carcinoembrionário"
+      ]
+    },
+    {
+      "code": "CAT-094",
+      "name": "Alfafetoproteína",
+      "aliases": [
+        "AFP"
+      ]
+    },
+    {
+      "code": "CAT-095",
+      "name": "Complemento C3",
+      "aliases": [
+        "C3"
+      ]
+    },
+    {
+      "code": "CAT-096",
+      "name": "Complemento C4",
+      "aliases": [
+        "C4"
+      ]
+    },
+    {
+      "code": "CAT-097",
+      "name": "IgA total",
+      "aliases": [
+        "Imunoglobulina A"
+      ]
+    },
+    {
+      "code": "CAT-098",
+      "name": "IgG total",
+      "aliases": [
+        "Imunoglobulina G"
+      ]
+    },
+    {
+      "code": "CAT-099",
+      "name": "IgM total",
+      "aliases": [
+        "Imunoglobulina M"
+      ]
+    },
+    {
+      "code": "CAT-100",
+      "name": "IgE total",
+      "aliases": [
+        "Imunoglobulina E"
+      ]
+    },
+    {
+      "code": "CAT-101",
+      "name": "HBsAg",
+      "aliases": [
+        "Antígeno de superfície da hepatite B"
+      ]
+    },
+    {
+      "code": "CAT-102",
+      "name": "Anti-HBs",
+      "aliases": [
+        "Anticorpo anti-HBs"
+      ]
+    },
+    {
+      "code": "CAT-103",
+      "name": "Anti-HBc total",
+      "aliases": [
+        "Anticorpo anti-HBc total"
+      ]
+    },
+    {
+      "code": "CAT-104",
+      "name": "Anti-HCV",
+      "aliases": [
+        "Anticorpo anti-hepatite C"
+      ]
+    },
+    {
+      "code": "CAT-105",
+      "name": "HIV 1 e 2",
+      "aliases": [
+        "Anti-HIV 1 e 2"
+      ]
+    },
+    {
+      "code": "CAT-106",
+      "name": "VDRL",
+      "aliases": [
+        "Teste não treponêmico para sífilis"
+      ]
+    },
+    {
+      "code": "CAT-107",
+      "name": "Toxoplasma IgG",
+      "aliases": [
+        "Anticorpos IgG para toxoplasmose"
+      ]
+    },
+    {
+      "code": "CAT-108",
+      "name": "Toxoplasma IgM",
+      "aliases": [
+        "Anticorpos IgM para toxoplasmose"
+      ]
+    },
+    {
+      "code": "CAT-109",
+      "name": "Rubéola IgG",
+      "aliases": [
+        "Anticorpos IgG para rubéola"
+      ]
+    },
+    {
+      "code": "CAT-110",
+      "name": "Citomegalovírus IgG",
+      "aliases": [
+        "CMV IgG"
+      ]
+    },
+    {
+      "code": "CAT-111",
+      "name": "EBV VCA IgM",
+      "aliases": [
+        "Anticorpos IgM para Epstein-Barr"
+      ]
+    },
+    {
+      "code": "CAT-112",
+      "name": "Eletroforese de proteínas séricas",
+      "aliases": [
+        "Proteinograma eletroforético"
+      ]
+    },
+    {
+      "code": "CAT-113",
+      "name": "Eletroforese de hemoglobina",
+      "aliases": [
+        "Pesquisa de hemoglobinas"
+      ]
+    },
+    {
+      "code": "CAT-114",
+      "name": "Reticulócitos",
+      "aliases": [
+        "Contagem de reticulócitos"
+      ]
+    },
+    {
+      "code": "CAT-115",
+      "name": "Contagem de plaquetas",
+      "aliases": [
+        "Plaquetas"
+      ]
+    },
+    {
+      "code": "CAT-116",
+      "name": "Tempo de protrombina (TP/INR)",
+      "aliases": [
+        "TP/INR"
+      ]
+    },
+    {
+      "code": "CAT-117",
+      "name": "Tempo de tromboplastina parcial ativada",
+      "aliases": [
+        "TTPA"
+      ]
+    },
+    {
+      "code": "CAT-118",
+      "name": "Coagulograma",
+      "aliases": []
+    },
+    {
+      "code": "CAT-119",
+      "name": "Homocisteína",
+      "aliases": []
+    },
+    {
+      "code": "CAT-120",
+      "name": "Colesterol HDL",
+      "aliases": [
+        "HDL"
+      ]
+    },
+    {
+      "code": "CAT-121",
+      "name": "Colesterol LDL",
+      "aliases": [
+        "LDL"
+      ]
+    },
+    {
+      "code": "CAT-122",
+      "name": "Anticorpo anti-receptor de TSH",
+      "aliases": [
+        "TRAb"
+      ]
+    }
+  ]
+}
