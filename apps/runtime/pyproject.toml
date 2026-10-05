@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-carrefour-observability = { workspace = "../../packages/carrefour_observability" }
+carrefour-observability = { path = "../../packages/carrefour_observability", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = [

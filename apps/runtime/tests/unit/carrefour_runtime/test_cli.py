@@ -292,6 +292,13 @@ def test_process_reports_processing_failures_without_leaking_internal_errors(
             },
             2,
         ),
+        (
+            {
+                "status": "review_required",
+                "reason": "sensitive_data_detected",
+            },
+            2,
+        ),
     ],
 )
 def test_process_prints_json_and_uses_distinct_manual_review_exit_code(

@@ -269,6 +269,10 @@ def make_process_service(
             "exams": ["Hemograma completo"],
             "ambiguous_exams": ["TSH"],
         },
+        {
+            "status": "review_required",
+            "reason": "sensitive_data_detected",
+        },
     ],
 )
 def test_process_runs_generated_agent_over_sse_and_uses_structured_tool_result(

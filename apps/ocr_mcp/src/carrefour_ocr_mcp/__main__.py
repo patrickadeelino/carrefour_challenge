@@ -11,6 +11,13 @@ from carrefour_ocr_mcp.server import create_sse_app
 from carrefour_ocr_mcp.services.exam_extractor.vision_exam_extractor import (
     VisionExamExtractor,
 )
+from carrefour_ocr_mcp.services.pii_guard import (
+    PiiConfigurationError,
+    PiiOutputGuard,
+)
+from carrefour_ocr_mcp.services.pii_guard.presidio_analyzer import (
+    PresidioPiiAnalyzer,
+)
 from carrefour_ocr_mcp.vision_client import (
     GoogleCloudVisionClient,
     VisionConfigurationError,
@@ -21,6 +28,13 @@ OCR_HOST = "0.0.0.0"
 OCR_PORT = 8000
 # Mantém o namespace do pacote mesmo quando executado como `python -m`.
 logger = logging.getLogger("carrefour_ocr_mcp.__main__")
+
+
+def _create_pii_guard() -> PiiOutputGuard:
+    try:
+        return PiiOutputGuard(PresidioPiiAnalyzer())
+    except Exception:
+        raise PiiConfigurationError() from None
 
 
 def _allowed_hosts_from_environment() -> list[str]:
@@ -47,11 +61,17 @@ async def _serve() -> None:
         os.environ.get("CARREFOUR_IMAGE_STORAGE_PATH", IMAGE_STORAGE_PATH)
     )
     allowed_hosts = _allowed_hosts_from_environment()
+    pii_guard = _create_pii_guard()
 
     async with httpx.AsyncClient() as http_client:
         vision_client = GoogleCloudVisionClient.from_environment(http_client)
         extractor = VisionExamExtractor(vision_client)
-        app = create_sse_app(image_directory, extractor, allowed_hosts)
+        app = create_sse_app(
+            image_directory,
+            extractor,
+            allowed_hosts,
+            pii_guard,
+        )
         server = uvicorn.Server(
             uvicorn.Config(
                 app,
@@ -74,6 +94,17 @@ def main() -> None:
             extra={
                 "event_name": "ocr.configuration.failed",
                 "component": "vision_client",
+                "error_code": error.error_code,
+                "error_type": type(error).__name__,
+            },
+        )
+        raise SystemExit(str(error)) from None
+    except PiiConfigurationError as error:
+        logger.error(
+            "ocr.configuration.failed",
+            extra={
+                "event_name": "ocr.configuration.failed",
+                "component": error.component,
                 "error_code": error.error_code,
                 "error_type": type(error).__name__,
             },

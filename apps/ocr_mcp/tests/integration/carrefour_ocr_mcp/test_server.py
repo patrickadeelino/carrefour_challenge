@@ -1,6 +1,7 @@
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -26,12 +27,17 @@ class FakeOcrProcessor:
 @pytest.fixture
 async def mcp_client(
     tmp_path: Path,
+    pii_output_guard,
 ) -> AsyncIterator[tuple[Client, FakeOcrProcessor, bytes, str]]:
     image_id = str(uuid4())
     image = b"synthetic image bytes"
     (tmp_path / image_id).write_bytes(image)
     processor = FakeOcrProcessor({"exams": ["Hemograma completo"]})
-    server = create_server(image_directory=tmp_path, ocr_processor=processor)
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=pii_output_guard,
+    )
 
     async with Client(server) as client:
         yield client, processor, image, image_id
@@ -69,13 +75,18 @@ async def test_in_memory_transport_runs_extractor_with_mocked_vision(
     numbered_vision_annotation: dict[str, object],
     numbered_request_image: bytes,
     vision_client_factory,
+    pii_output_guard,
     json_log_capture,
 ) -> None:
     image_id = str(uuid4())
     (tmp_path / image_id).write_bytes(numbered_request_image)
     vision_client = vision_client_factory(numbered_vision_annotation)
     extractor = VisionExamExtractor(vision_client)
-    server = create_server(image_directory=tmp_path, ocr_processor=extractor)
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=extractor,
+        pii_guard=pii_output_guard,
+    )
 
     with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
         async with Client(server) as client:
@@ -102,6 +113,62 @@ async def test_in_memory_transport_runs_extractor_with_mocked_vision(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("annotation_fixture", "image_fixture", "expected_exams"),
+    [
+        (
+            "numbered_vision_annotation",
+            "numbered_request_image",
+            [
+                "Hemograma completo",
+                "Glicemia de jejum",
+                "Hemoglobina glicada (HbA1c)",
+                "Colesterol total e frações",
+                "TSH (hormônio tireoestimulante)",
+            ],
+        ),
+        (
+            "checkbox_vision_annotation",
+            "checkbox_request_image",
+            [
+                "Hemograma completo",
+                "Glicemia de jejum",
+                "Hemoglobina glicada (HbA1c)",
+                "TSH",
+                "Colesterol LDL",
+                "Vitamina D (25-OH)",
+            ],
+        ),
+    ],
+    ids=["numbered-list", "checkbox-form"],
+)
+async def test_reference_layouts_pass_the_local_pii_boundary(
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+    annotation_fixture: str,
+    image_fixture: str,
+    expected_exams: list[str],
+    vision_client_factory,
+    local_pii_output_guard,
+) -> None:
+    image_id = str(uuid4())
+    image = request.getfixturevalue(image_fixture)
+    (tmp_path / image_id).write_bytes(image)
+    annotation: dict[str, Any] = request.getfixturevalue(annotation_fixture)
+    extractor = VisionExamExtractor(vision_client_factory(annotation))
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=extractor,
+        pii_guard=local_pii_output_guard,
+    )
+
+    async with Client(server) as client:
+        result = await client.call_tool("extract_exams", {"image_id": image_id})
+
+    assert result.structured_content == {"exams": expected_exams}
+
+
+@pytest.mark.anyio
 async def test_extract_exams_rejects_non_uuid_without_reading_a_file(
     mcp_client: tuple[Client, FakeOcrProcessor, bytes, str],
     json_log_capture,
@@ -125,10 +192,15 @@ async def test_extract_exams_rejects_non_uuid_without_reading_a_file(
 @pytest.mark.anyio
 async def test_extract_exams_reports_missing_image_without_calling_processor(
     tmp_path: Path,
+    pii_output_guard,
     json_log_capture,
 ) -> None:
     processor = FakeOcrProcessor({"exams": []})
-    server = create_server(image_directory=tmp_path, ocr_processor=processor)
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=pii_output_guard,
+    )
 
     image_id = str(uuid4())
     with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
@@ -147,6 +219,7 @@ async def test_extract_exams_reports_missing_image_without_calling_processor(
 @pytest.mark.anyio
 async def test_extract_exams_preserves_manual_review_result_over_mcp(
     tmp_path: Path,
+    pii_output_guard,
     json_log_capture,
 ) -> None:
     image_id = str(uuid4())
@@ -158,7 +231,11 @@ async def test_extract_exams_preserves_manual_review_result_over_mcp(
             "ambiguous_exams": ["Creatinina"],
         }
     )
-    server = create_server(image_directory=tmp_path, ocr_processor=processor)
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=pii_output_guard,
+    )
 
     with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
         async with Client(server) as client:
@@ -179,6 +256,7 @@ async def test_extract_exams_preserves_manual_review_result_over_mcp(
 @pytest.mark.anyio
 async def test_extract_exams_logs_sanitized_unexpected_failure(
     tmp_path: Path,
+    pii_output_guard,
     json_log_capture,
 ) -> None:
     image_id = str(uuid4())
@@ -189,7 +267,11 @@ async def test_extract_exams_logs_sanitized_unexpected_failure(
             del image
             raise RuntimeError("synthetic private OCR payload")
 
-    server = create_server(image_directory=tmp_path, ocr_processor=FailingProcessor())
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=FailingProcessor(),
+        pii_guard=pii_output_guard,
+    )
 
     with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
         async with Client(server) as client:
@@ -204,3 +286,81 @@ async def test_extract_exams_logs_sanitized_unexpected_failure(
     assert record["error_type"] == "RuntimeError"
     assert image_id not in log_stream.getvalue()
     assert "synthetic private OCR payload" not in log_stream.getvalue()
+
+
+@pytest.mark.anyio
+async def test_extract_exams_suppresses_all_names_when_pii_is_found(
+    tmp_path: Path,
+    json_log_capture,
+) -> None:
+    from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
+
+    class MatchingPiiAnalyzer:
+        def __init__(self, sensitive_value: str) -> None:
+            self.sensitive_value = sensitive_value
+
+        def contains_pii(self, text: str) -> bool:
+            return text == self.sensitive_value
+
+    image_id = str(uuid4())
+    (tmp_path / image_id).write_bytes(b"synthetic image bytes")
+    sensitive_value = "CPF 529.982.247-25"
+    processor = FakeOcrProcessor(
+        {"exams": ["Hemograma completo", sensitive_value]}
+    )
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=PiiOutputGuard(MatchingPiiAnalyzer(sensitive_value)),
+    )
+
+    with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
+        async with Client(server) as client:
+            result = await client.call_tool("extract_exams", {"image_id": image_id})
+
+    assert result.structured_content == {
+        "status": "review_required",
+        "reason": "sensitive_data_detected",
+    }
+    assert sensitive_value not in json.dumps(result.structured_content)
+    assert "Hemograma completo" not in json.dumps(result.structured_content)
+    assert sensitive_value not in log_stream.getvalue()
+    records = [json.loads(line) for line in log_stream.getvalue().splitlines()]
+    blocked = next(record for record in records if record["event"] == "ocr.pii.blocked")
+    assert blocked["outcome"] == "review_required"
+    assert blocked["error_code"] == "sensitive_data_detected"
+
+
+@pytest.mark.anyio
+async def test_extract_exams_fails_closed_when_pii_analysis_fails(
+    tmp_path: Path,
+    json_log_capture,
+) -> None:
+    from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
+
+    image_id = str(uuid4())
+    (tmp_path / image_id).write_bytes(b"synthetic image bytes")
+    sensitive_value = "CPF 529.982.247-25"
+
+    class FailingPiiAnalyzer:
+        def contains_pii(self, text: str) -> bool:
+            del text
+            raise RuntimeError(sensitive_value)
+
+    processor = FakeOcrProcessor({"exams": [sensitive_value]})
+    server = create_server(
+        image_directory=tmp_path,
+        ocr_processor=processor,
+        pii_guard=PiiOutputGuard(FailingPiiAnalyzer()),
+    )
+
+    with json_log_capture("carrefour_ocr_mcp", "ocr-mcp") as log_stream:
+        async with Client(server) as client:
+            result = await client.call_tool("extract_exams", {"image_id": image_id})
+
+    assert result.is_error
+    assert sensitive_value not in result.content[0].text
+    assert sensitive_value not in log_stream.getvalue()
+    record = json.loads(log_stream.getvalue().splitlines()[-1])
+    assert record["error_code"] == "pii_analysis_failed"
+    assert record["component"] == "pii_guard"

@@ -75,6 +75,10 @@ class FakeExecutor:
             "exams": ["Hemograma completo"],
             "ambiguous_exams": ["TSH"],
         },
+        {
+            "status": "review_required",
+            "reason": "sensitive_data_detected",
+        },
     ],
 )
 def test_process_stores_image_passes_only_uuid_and_deletes_temporary_copy(
@@ -189,6 +193,11 @@ def test_process_reports_sanitized_failure_when_processing_and_cleanup_fail(
         {"exams": "not a list"},
         {"status": "unknown"},
         {"status": "review_required", "exams": [], "ambiguous_exams": []},
+        {
+            "status": "review_required",
+            "reason": "sensitive_data_detected",
+            "exams": ["CPF 123.456.789-00"],
+        },
     ],
 )
 def test_process_rejects_missing_or_malformed_ocr_result(

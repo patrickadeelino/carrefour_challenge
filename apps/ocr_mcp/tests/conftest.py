@@ -9,6 +9,11 @@ from typing import Any
 import pytest
 from carrefour_observability.logging_config import JsonEventFormatter
 
+from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
+from carrefour_ocr_mcp.services.pii_guard.presidio_analyzer import (
+    PresidioPiiAnalyzer,
+)
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -48,9 +53,27 @@ class FakeVisionClient:
         return self.annotation
 
 
+class FakePiiAnalyzer:
+    def __init__(self, sensitive_values: set[str] | None = None) -> None:
+        self.sensitive_values = sensitive_values or set()
+
+    def contains_pii(self, text: str) -> bool:
+        return text in self.sensitive_values
+
+
 @pytest.fixture
 def vision_client_factory() -> type[FakeVisionClient]:
     return FakeVisionClient
+
+
+@pytest.fixture
+def pii_output_guard() -> PiiOutputGuard:
+    return PiiOutputGuard(FakePiiAnalyzer())
+
+
+@pytest.fixture(scope="session")
+def local_pii_output_guard() -> PiiOutputGuard:
+    return PiiOutputGuard(PresidioPiiAnalyzer())
 
 
 @pytest.fixture

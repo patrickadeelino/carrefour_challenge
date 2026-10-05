@@ -52,6 +52,7 @@ async def test_sse_transport_discovers_and_calls_extract_exams(
     numbered_vision_annotation: dict[str, object],
     numbered_request_image: bytes,
     vision_client_factory,
+    pii_output_guard,
 ) -> None:
     image_id = str(uuid4())
     (tmp_path / image_id).write_bytes(numbered_request_image)
@@ -61,6 +62,7 @@ async def test_sse_transport_discovers_and_calls_extract_exams(
         image_directory=tmp_path,
         ocr_processor=extractor,
         allowed_hosts=["127.0.0.1:*"],
+        pii_guard=pii_output_guard,
     )
 
     async with (

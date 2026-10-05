@@ -12,6 +12,7 @@ class ExamResult:
     exams: tuple[str, ...]
     status: Literal["review_required"] | None = None
     ambiguous_exams: tuple[str, ...] = ()
+    reason: Literal["sensitive_data_detected"] | None = None
 
     def __post_init__(self) -> None:
         names = (*self.exams, *self.ambiguous_exams)
@@ -21,7 +22,15 @@ class ExamResult:
             raise ValueError("status de resultado de exame inválido")
         if self.status is None and self.ambiguous_exams:
             raise ValueError("exames ambíguos exigem revisão manual")
-        if self.status == "review_required" and not self.ambiguous_exams:
+        if self.reason is not None and self.status != "review_required":
+            raise ValueError("motivo de revisão exige status de revisão")
+        if self.reason is not None and names:
+            raise ValueError("revisão por dados sensíveis não pode expor exames")
+        if (
+            self.status == "review_required"
+            and self.reason is None
+            and not self.ambiguous_exams
+        ):
             raise ValueError("revisão manual exige ao menos um exame ambíguo")
 
     @classmethod
@@ -41,6 +50,17 @@ class ExamResult:
                 ambiguous_exams=_exam_names(value["ambiguous_exams"]),
             )
 
+        if (
+            set(value) == {"status", "reason"}
+            and value["status"] == "review_required"
+            and value["reason"] == "sensitive_data_detected"
+        ):
+            return cls(
+                exams=(),
+                status="review_required",
+                reason="sensitive_data_detected",
+            )
+
         raise ValueError("OCR não retornou um resultado estruturado válido")
 
     @property
@@ -50,6 +70,8 @@ class ExamResult:
     def to_dict(self) -> dict[str, object]:
         if not self.requires_review:
             return {"exams": list(self.exams)}
+        if self.reason is not None:
+            return {"status": "review_required", "reason": self.reason}
         return {
             "status": "review_required",
             "exams": list(self.exams),

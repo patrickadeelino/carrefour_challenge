@@ -8,11 +8,16 @@ from starlette.applications import Starlette
 
 from carrefour_ocr_mcp.contracts import ExamExtractor, ExamResult
 from carrefour_ocr_mcp.image_access import ImageAccessError, read_image
+from carrefour_ocr_mcp.services.pii_guard import PiiOutputGuard
 
 logger = logging.getLogger(__name__)
 
 
-def create_server(image_directory: Path, ocr_processor: ExamExtractor) -> MCPServer:
+def create_server(
+    image_directory: Path,
+    ocr_processor: ExamExtractor,
+    pii_guard: PiiOutputGuard,
+) -> MCPServer:
     server = MCPServer("carrefour-ocr")
 
     @server.tool()
@@ -37,7 +42,8 @@ def create_server(image_directory: Path, ocr_processor: ExamExtractor) -> MCPSer
                     "duration_ms": _duration_ms(image_started_at),
                 },
             )
-            result: ExamResult = await ocr_processor.extract_exams(image)
+            raw_result: ExamResult = await ocr_processor.extract_exams(image)
+            result = pii_guard.protect(raw_result)
         except Exception as error:
             error_code = getattr(error, "error_code", "ocr_extraction_failed")
             is_rejection = isinstance(error, ImageAccessError) and error_code in {
@@ -58,6 +64,18 @@ def create_server(image_directory: Path, ocr_processor: ExamExtractor) -> MCPSer
                 },
             )
             raise
+
+        pii_blocked = result.get("reason") == "sensitive_data_detected"
+        if pii_blocked:
+            logger.warning(
+                "ocr.pii.blocked",
+                extra={
+                    "event_name": "ocr.pii.blocked",
+                    "component": "pii_guard",
+                    "error_code": "sensitive_data_detected",
+                    "outcome": "review_required",
+                },
+            )
 
         outcome = (
             "review_required"
@@ -83,8 +101,9 @@ def create_sse_app(
     image_directory: Path,
     ocr_processor: ExamExtractor,
     allowed_hosts: list[str],
+    pii_guard: PiiOutputGuard,
 ) -> Starlette:
-    server = create_server(image_directory, ocr_processor)
+    server = create_server(image_directory, ocr_processor, pii_guard)
     transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=allowed_hosts,

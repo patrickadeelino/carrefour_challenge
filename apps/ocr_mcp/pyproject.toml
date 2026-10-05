@@ -13,11 +13,14 @@ dependencies = [
     "httpx>=0.27,<1",
     "mcp>=2,<3",
     "pillow>=10,<13",
+    "presidio-analyzer>=2.2,<3",
+    "pt-core-news-sm",
     "uvicorn>=0.34,<1",
 ]
 
 [tool.uv.sources]
-carrefour-observability = { workspace = "../../packages/carrefour_observability" }
+carrefour-observability = { path = "../../packages/carrefour_observability", editable = true }
+pt-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/pt_core_news_sm-3.8.0/pt_core_news_sm-3.8.0-py3-none-any.whl" }
 
 [tool.pytest.ini_options]
 testpaths = [

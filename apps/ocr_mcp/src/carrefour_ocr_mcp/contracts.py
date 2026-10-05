@@ -11,7 +11,12 @@ class ExamReviewResult(TypedDict):
     ambiguous_exams: list[str]
 
 
-ExamResult: TypeAlias = ExamExtractionResult | ExamReviewResult
+class ExamPiiReviewResult(TypedDict):
+    status: Literal["review_required"]
+    reason: Literal["sensitive_data_detected"]
+
+
+ExamResult: TypeAlias = ExamExtractionResult | ExamReviewResult | ExamPiiReviewResult
 
 
 class ExamExtractor(Protocol):
