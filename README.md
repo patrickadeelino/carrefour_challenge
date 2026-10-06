@@ -1,24 +1,16 @@
 # Carrefour Challenge
 
-**Estado:** Fase 1 concluída; OCR MCP, RAG MCP e Schedule API estão disponíveis como serviços independentes. O runtime já integra os três no comando `process`; a validação manual ponta a ponta com os serviços reais está em andamento.
+Este projeto transforma uma especificação JSON em um agente Google ADK que processa pedidos de exames e solicita agendamentos. O fluxo integra OCR e RAG via MCP/SSE com uma API FastAPI, e roda em serviços independentes orquestrados pelo Docker Compose.
 
-O projeto constrói um agente exam scheduler a partir de uma especificação declarativa. A Fase 1 valida o JSON e gera uma factory Python para o Google ADK. A Fase 2 prepara os serviços e integrações do fluxo de atendimento.
 
-## Fluxo da Fase 1
+| Serviço | Quantidade de testes | Coverage |
+| --- | ---: | ---: |
+| assistant-runtime | 132 | 88,0% |
+| ocr-mcp | 112 | 96,2% |
+| rag-mcp | 67 | 94,6% |
+| schedule-api | 42 | 95,0% |
 
-~~~text
-specification.json -> validação Pydantic -> geração determinística de uma factory Python
-~~~
-
-A especificação escolhe tools por IDs registrados no projeto. Ela não aceita código, instruções livres, credenciais ou endereços de servidores MCP. A factory gerada recebe implementações aprovadas pelo runtime e valida que o conjunto de IDs corresponde exatamente ao declarado antes de criar o agente.
-
-A geração produz código-fonte; não executa a factory nem inicia o agente. O código gerado define `create_agent(registered_tools)`, que instancia um `Agent` do Google ADK quando for chamado.
-
-## Estado da Fase 2
-
-O componente `TemporaryImageStore`, em `apps/runtime/src/carrefour_runtime/services/image_storage/temporary_store.py`, valida o conteúdo real da imagem, aceita `PNG` e `JPG` até 10 MB, grava os bytes sob um `UUID` com promoção atômica e remove imagens órfãs com mais de 30 minutos durante uma nova gravação.
-
-O Docker Compose inicia os apps em containers independentes. O volume `tmpfs` de 64 MiB pode ser gravado pelo runtime e é montado como somente leitura no OCR. O comando `process --path <nome> --user <id>` carrega a factory gerada, envia somente o UUID da imagem ao agente e conduz o fluxo OCR via SSE, resolução no RAG via SSE e agendamento autenticado pela API. O RAG resolve nomes no catálogo fictício; a API persiste reservas em SQLite.
+A cobertura considera o pacote de aplicação de cada serviço; os testes do pacote compartilhado de observabilidade não entram nesses percentuais.
 
 ## Documentação
 
